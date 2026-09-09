@@ -1,0 +1,52 @@
+from pyspark.sql.types import (
+    DoubleType,
+    StringType,
+    StructField,
+    StructType,
+)
+
+
+TRANSACTION_SCHEMA = StructType(
+    [
+        StructField(
+            "transaction_id",
+            StringType(),
+            False,
+        ),
+        StructField(
+            "customer_id",
+            StringType(),
+            False,
+        ),
+        StructField(
+            "order_id",
+            StringType(),
+            True,
+        ),
+        StructField(
+            "payment_id",
+            StringType(),
+            True,
+        ),
+        StructField(
+            "amount",
+            DoubleType(),
+            True,
+        ),
+        StructField(
+            "payment_method",
+            StringType(),
+            True,
+        ),
+        StructField(
+            "status",
+            StringType(),
+            True,
+        ),
+        StructField(
+            "event_time",
+            StringType(),
+            True,
+        ),
+    ]
+)

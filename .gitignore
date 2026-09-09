@@ -1,0 +1,41 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Airflow runtime files
+airflow/logs/
+airflow/airflow.cfg
+airflow/webserver_config.py
+
+# macOS
+.DS_Store
+
+# IDE / editor
+.vscode/
+.idea/
+
+# Temporary / backup files
+*.bak
+*.tmp
+docker-compose.yml.backup-before-airflow
+
+# Spark / local runtime artifacts
+.metals/
+.sparkStaging/
+
+# Test / cache artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
