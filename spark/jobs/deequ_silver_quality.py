@@ -287,12 +287,11 @@ def main():
         # Constraint-level results
         # -------------------------------------------------
 
-        results_df = (
-            VerificationResult.checkResultsAsDataFrame(
-                spark,
-                verification_result,
-            )
+        results_json = VerificationResult.checkResultsAsJson(
+            spark,
+            verification_result,
         )
+        results_df = spark.createDataFrame(results_json)
 
         print("=" * 70)
         print("DEEQU CHECK RESULTS")
@@ -306,12 +305,11 @@ def main():
         # Numeric Deequ metrics
         # -------------------------------------------------
 
-        metrics_df = (
-            VerificationResult.successMetricsAsDataFrame(
-                spark,
-                verification_result,
-            )
+        metrics_json = VerificationResult.successMetricsAsJson(
+            spark,
+            verification_result,
         )
+        metrics_df = spark.createDataFrame(metrics_json)
 
         print("=" * 70)
         print("DEEQU QUALITY METRICS")
