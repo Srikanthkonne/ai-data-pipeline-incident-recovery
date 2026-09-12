@@ -1,5 +1,8 @@
 services:
 
+  # =========================================================
+  # Source PostgreSQL
+  # =========================================================
   postgres:
     image: postgres:16
     container_name: incident-postgres
@@ -14,15 +17,13 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
 
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
-        ]
-      interval: 5s
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 10s
       timeout: 5s
       retries: 5
 
@@ -30,6 +31,9 @@ services:
       - data-platform-network
 
 
+  # =========================================================
+  # Kafka
+  # =========================================================
   kafka:
     image: apache/kafka:4.3.1
     container_name: incident-platform-kafka
@@ -39,54 +43,57 @@ services:
 
     environment:
       KAFKA_NODE_ID: 1
+
       KAFKA_PROCESS_ROLES: broker,controller
+
+      KAFKA_LISTENERS: >-
+        PLAINTEXT_HOST://0.0.0.0:9092,
+        PLAINTEXT_DOCKER://0.0.0.0:29092,
+        CONTROLLER://0.0.0.0:9093
+
+      KAFKA_ADVERTISED_LISTENERS: >-
+        PLAINTEXT_HOST://localhost:9092,
+        PLAINTEXT_DOCKER://kafka:29092
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        CONTROLLER:PLAINTEXT,
+        PLAINTEXT_HOST:PLAINTEXT,
+        PLAINTEXT_DOCKER:PLAINTEXT
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: >-
+        1@kafka:9093
+
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENERS: PLAINTEXT_HOST://:9092,PLAINTEXT_DOCKER://:29092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_HOST://localhost:9092,PLAINTEXT_DOCKER://kafka:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,PLAINTEXT_DOCKER:PLAINTEXT
+
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_DOCKER
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
       KAFKA_NUM_PARTITIONS: 3
 
     volumes:
-      - kafka_data:/tmp/kraft-combined-logs
+      - kafka_data:/var/lib/kafka/data
 
     networks:
       - data-platform-network
 
 
-  spark:
-    image: apache/spark:3.5.1-python3
-    container_name: incident-platform-spark
-
-    command:
-      - /bin/bash
-      - -c
-      - sleep infinity
-
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-
-    volumes:
-      - ./spark:/opt/spark/work-dir
-
-    depends_on:
-      - kafka
-      - minio
-
-    networks:
-      - data-platform-network
-
-
+  # =========================================================
+  # MinIO
+  # =========================================================
   minio:
     image: minio/minio:latest
     container_name: incident-platform-minio
 
-    command: server /data --console-address ":9001"
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
 
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -103,6 +110,49 @@ services:
       - data-platform-network
 
 
+  # =========================================================
+  # Spark + PyDeequ
+  # =========================================================
+  spark:
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+
+    image: incident-spark-deequ:3.5.1
+
+    container_name: incident-platform-spark
+
+    command:
+      - /bin/bash
+      - -c
+      - sleep infinity
+
+    environment:
+      # MinIO / S3A
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+      # PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    volumes:
+      - ./spark:/opt/spark/work-dir
+
+    depends_on:
+      - kafka
+      - minio
+
+    networks:
+      - data-platform-network
+
+
+  # =========================================================
+  # Airflow Metadata PostgreSQL
+  # =========================================================
   airflow-postgres:
     image: postgres:16
     container_name: incident-platform-airflow-postgres
@@ -117,11 +167,9 @@ services:
 
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U airflow -d airflow"
-        ]
-      interval: 5s
+        - CMD-SHELL
+        - pg_isready -U airflow -d airflow
+      interval: 10s
       timeout: 5s
       retries: 5
 
@@ -129,6 +177,9 @@ services:
       - data-platform-network
 
 
+  # =========================================================
+  # Airflow Initialization
+  # =========================================================
   airflow-init:
     image: apache/airflow:2.10.5
     container_name: incident-platform-airflow-init
@@ -139,32 +190,51 @@ services:
 
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+        postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow
+
+      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+
+        echo "Migrating Airflow database..."
+        airflow db migrate
+
+        echo "Checking Airflow admin user..."
+
+        if airflow users list | grep -q "$${AIRFLOW_ADMIN_USERNAME}"; then
+          echo "Airflow admin user already exists."
+        else
+          echo "Creating Airflow admin user..."
+
+          airflow users create \
+            --username "$${AIRFLOW_ADMIN_USERNAME}" \
+            --password "$${AIRFLOW_ADMIN_PASSWORD}" \
+            --firstname Admin \
+            --lastname User \
+            --role Admin \
+            --email admin@example.com
+        fi
 
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
-      - ./airflow/config:/opt/airflow/config
-
-    command:
-      - bash
-      - -c
-      - |
-        airflow db migrate &&
-        airflow users create \
-          --username "${AIRFLOW_ADMIN_USERNAME}" \
-          --password "${AIRFLOW_ADMIN_PASSWORD}" \
-          --firstname Admin \
-          --lastname User \
-          --role Admin \
-          --email admin@example.com
 
     networks:
       - data-platform-network
 
 
+  # =========================================================
+  # Airflow Webserver
+  # =========================================================
   airflow-webserver:
     image: apache/airflow:2.10.5
     container_name: incident-platform-airflow-webserver
@@ -172,17 +242,21 @@ services:
     depends_on:
       airflow-postgres:
         condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
 
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+        postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow
+
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
 
-    command: webserver
+    command:
+      - airflow
+      - webserver
 
     ports:
       - "8080:8080"
@@ -190,13 +264,14 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
-      - ./airflow/config:/opt/airflow/config
 
     networks:
       - data-platform-network
 
 
+  # =========================================================
+  # Airflow Scheduler
+  # =========================================================
   airflow-scheduler:
     image: apache/airflow:2.10.5
     container_name: incident-platform-airflow-scheduler
@@ -204,28 +279,33 @@ services:
     depends_on:
       airflow-postgres:
         condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
 
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+        postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow
+
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
 
-    command: scheduler
+    command:
+      - airflow
+      - scheduler
 
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
-      - ./airflow/config:/opt/airflow/config
 
     networks:
       - data-platform-network
 
 
+# =========================================================
+# Persistent Volumes
+# =========================================================
 volumes:
   postgres_data:
   kafka_data:
@@ -233,6 +313,9 @@ volumes:
   airflow_postgres_data:
 
 
+# =========================================================
+# Docker Network
+# =========================================================
 networks:
   data-platform-network:
     driver: bridge
