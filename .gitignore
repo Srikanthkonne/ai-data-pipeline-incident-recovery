@@ -39,3 +39,12 @@ htmlcov/
 
 # Logs
 *.log
+
+.dbt-venv/
+
+# dbt runtime artifacts
+dbt/**/.user.yml
+dbt/**/*.duckdb
+dbt/**/target/
+dbt/**/logs/
+dbt/**/dbt_packages/

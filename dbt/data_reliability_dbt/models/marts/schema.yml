@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: daily_revenue
+    description: "Daily revenue metrics from successful transactions."
+
+    columns:
+      - name: transaction_date
+        data_tests:
+          - not_null
+          - unique
+
+      - name: total_revenue
+        data_tests:
+          - not_null
+
+  - name: customer_ltv
+    description: "Lifetime revenue metrics for customers with successful transactions."
+
+    columns:
+      - name: customer_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: lifetime_revenue
+        data_tests:
+          - not_null
+
+  - name: payment_success_rate
+    description: "Payment success metrics grouped by payment method."
+
+    columns:
+      - name: payment_method
+        data_tests:
+          - not_null
+          - unique
+
+      - name: success_rate
+        data_tests:
+          - not_null
+
+  - name: customer_spend
+    description: "Daily successful transaction spend by customer."
+
+    columns:
+      - name: customer_id
+        data_tests:
+          - not_null
+
+      - name: transaction_date
+        data_tests:
+          - not_null
+
+      - name: total_spend
+        data_tests:
+          - not_null

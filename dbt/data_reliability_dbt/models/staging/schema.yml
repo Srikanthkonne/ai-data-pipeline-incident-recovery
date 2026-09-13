@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: stg_transactions
+    description: "Validated Silver transaction data exposed to dbt."
+
+    columns:
+      - name: transaction_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: customer_id
+        data_tests:
+          - not_null
+
+      - name: amount
+        data_tests:
+          - not_null
+
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - SUCCESS
+                  - FAILED
+                  - PENDING
+
+      - name: payment_method
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - APPLE_PAY
+                  - CREDIT_CARD
+                  - DEBIT_CARD
+                  - PAYPAL
+
+      - name: event_time
+        data_tests:
+          - not_null
