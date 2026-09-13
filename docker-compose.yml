@@ -151,6 +151,75 @@ services:
 
 
   # =========================================================
+  # Marquez Metadata PostgreSQL
+  # =========================================================
+  marquez-postgres:
+    image: postgres:14
+    container_name: incident-platform-marquez-postgres
+    environment:
+      POSTGRES_USER: marquez
+      POSTGRES_PASSWORD: ${MARQUEZ_DB_PASSWORD}
+      POSTGRES_DB: marquez
+    volumes:
+      - marquez_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U marquez -d marquez
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - data-platform-network
+
+  # =========================================================
+  # Marquez API
+  # =========================================================
+  marquez-api:
+    image: marquezproject/marquez:0.50.0
+    platform: linux/amd64
+    container_name: incident-platform-marquez-api
+    environment:
+      MARQUEZ_PORT: "5000"
+      MARQUEZ_ADMIN_PORT: "5001"
+      POSTGRES_HOST: marquez-postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: marquez
+      POSTGRES_USER: marquez
+      POSTGRES_PASSWORD: ${MARQUEZ_DB_PASSWORD}
+      SEARCH_ENABLED: "false"
+      MARQUEZ_CONFIG: /usr/src/app/marquez.yml
+    volumes:
+      - ./marquez/marquez.yml:/usr/src/app/marquez.yml:ro
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+    depends_on:
+      marquez-postgres:
+        condition: service_healthy
+    networks:
+      - data-platform-network
+
+  # =========================================================
+  # Marquez Web UI
+  # =========================================================
+  marquez-web:
+    image: marquezproject/marquez-web:0.50.0
+    platform: linux/amd64
+    container_name: incident-platform-marquez-web
+    environment:
+      MARQUEZ_HOST: marquez-api
+      MARQUEZ_PORT: "5000"
+      WEB_PORT: "3000"
+      REACT_APP_ADVANCED_SEARCH: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - marquez-api
+    networks:
+      - data-platform-network
+
+  # =========================================================
   # Airflow Metadata PostgreSQL
   # =========================================================
   airflow-postgres:
@@ -311,6 +380,7 @@ volumes:
   kafka_data:
   minio_data:
   airflow_postgres_data:
+  marquez_postgres_data:
 
 
 # =========================================================

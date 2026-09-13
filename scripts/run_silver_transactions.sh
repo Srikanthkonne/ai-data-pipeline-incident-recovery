@@ -9,10 +9,7 @@ AWS_SDK_BUNDLE_VERSION="1.12.262"
 OPENLINEAGE_VERSION="1.53.0"
 
 OPENLINEAGE_NAMESPACE="${OPENLINEAGE_NAMESPACE:-incident-platform}"
-OPENLINEAGE_EVENT_FILE="${OPENLINEAGE_EVENT_FILE:-/tmp/openlineage-silver-events.json}"
-
-docker exec "${SPARK_CONTAINER}" \
-  rm -f "${OPENLINEAGE_EVENT_FILE}"
+OPENLINEAGE_URL="${OPENLINEAGE_URL:-http://marquez-api:5000}"
 
 docker exec "${SPARK_CONTAINER}" \
   /opt/spark/bin/spark-submit \
@@ -21,7 +18,7 @@ docker exec "${SPARK_CONTAINER}" \
   --conf spark.driver.extraJavaOptions="-Divy.cache.dir=/tmp/.ivy2" \
   --conf spark.jars.ivy=/tmp/.ivy2 \
   --conf spark.extraListeners=io.openlineage.spark.agent.OpenLineageSparkListener \
-  --conf spark.openlineage.transport.type=file \
-  --conf spark.openlineage.transport.location="${OPENLINEAGE_EVENT_FILE}" \
+  --conf spark.openlineage.transport.type=http \
+  --conf spark.openlineage.transport.url="${OPENLINEAGE_URL}" \
   --conf spark.openlineage.namespace="${OPENLINEAGE_NAMESPACE}" \
   /opt/spark/work-dir/jobs/silver_transactions.py
