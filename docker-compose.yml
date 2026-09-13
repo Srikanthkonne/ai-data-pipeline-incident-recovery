@@ -220,6 +220,22 @@ services:
       - data-platform-network
 
   # =========================================================
+  # Neo4j Lineage Graph Store
+  # =========================================================
+  neo4j:
+    image: neo4j:5.26.30
+    container_name: incident-platform-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - data-platform-network
+
+  # =========================================================
   # Airflow Metadata PostgreSQL
   # =========================================================
   airflow-postgres:
@@ -381,6 +397,7 @@ volumes:
   minio_data:
   airflow_postgres_data:
   marquez_postgres_data:
+  neo4j_data:
 
 
 # =========================================================
