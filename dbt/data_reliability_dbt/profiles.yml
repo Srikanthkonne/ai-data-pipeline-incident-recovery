@@ -12,7 +12,7 @@ data_reliability_dbt:
         - parquet
 
       settings:
-        s3_endpoint: "localhost:9000"
+        s3_endpoint: "{{ env_var('DBT_S3_ENDPOINT', 'localhost:9000') }}"
         s3_access_key_id: "{{ env_var('MINIO_ROOT_USER') }}"
         s3_secret_access_key: "{{ env_var('MINIO_ROOT_PASSWORD') }}"
         s3_use_ssl: false

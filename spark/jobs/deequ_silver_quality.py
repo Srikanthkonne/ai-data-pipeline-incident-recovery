@@ -371,4 +371,19 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import os
+    import sys
+    import traceback
+
+    exit_code = 0
+
+    try:
+        main()
+    except BaseException:
+        traceback.print_exc()
+        exit_code = 1
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    os._exit(exit_code)

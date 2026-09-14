@@ -236,6 +236,39 @@ services:
       - data-platform-network
 
   # =========================================================
+  # Phase 2 Pipeline Runner
+  # =========================================================
+  pipeline-runner:
+    build:
+      context: .
+      dockerfile: infrastructure/pipeline-runner/Dockerfile
+    image: incident-platform-pipeline-runner:1.0
+    container_name: incident-platform-pipeline-runner
+    environment:
+      DBT_S3_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+      MARQUEZ_URL: http://marquez-api:5000
+      MARQUEZ_NAMESPACE: incident-platform
+
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./dbt:/workspace/dbt
+      - ./lineage:/workspace/lineage
+      - ./metadata:/workspace/metadata
+    networks:
+      - data-platform-network
+
+  # =========================================================
   # Airflow Metadata PostgreSQL
   # =========================================================
   airflow-postgres:
@@ -383,6 +416,8 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
+      - ./scripts:/opt/airflow/project/scripts:ro
+      - /var/run/docker.sock:/var/run/docker.sock
 
     networks:
       - data-platform-network
