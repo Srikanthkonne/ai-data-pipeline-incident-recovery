@@ -174,6 +174,134 @@ class LineageQueryService:
         }
 
 
+    def get_job_downstream(self, namespace, name):
+        """
+        Return all downstream nodes reachable from a Job.
+        """
+        query = """
+        MATCH p =
+            (start:Job {
+                namespace: $namespace,
+                name: $name
+            })-[:INPUT_TO|OUTPUTS*1..20]->(node)
+
+        WITH node, min(length(p)) AS hops
+
+        RETURN
+            labels(node)[0] AS node_type,
+            node.namespace AS namespace,
+            node.name AS name,
+            hops
+
+        ORDER BY
+            hops,
+            node_type,
+            name
+        """
+
+        with self.driver.session() as session:
+            result = session.run(
+                query,
+                namespace=namespace,
+                name=name,
+            )
+
+            return [
+                record.data()
+                for record in result
+            ]
+
+    def get_job_upstream(self, namespace, name):
+        """
+        Return all upstream nodes that feed a Job.
+        """
+        query = """
+        MATCH p =
+            (start:Job {
+                namespace: $namespace,
+                name: $name
+            })<-[:INPUT_TO|OUTPUTS*1..20]-(node)
+
+        WITH node, min(length(p)) AS hops
+
+        RETURN
+            labels(node)[0] AS node_type,
+            node.namespace AS namespace,
+            node.name AS name,
+            hops
+
+        ORDER BY
+            hops,
+            node_type,
+            name
+        """
+
+        with self.driver.session() as session:
+            result = session.run(
+                query,
+                namespace=namespace,
+                name=name,
+            )
+
+            return [
+                record.data()
+                for record in result
+            ]
+
+    def calculate_job_blast_radius(
+        self,
+        namespace,
+        name,
+    ):
+        """
+        Calculate downstream impact starting from a Job.
+        """
+        downstream = self.get_job_downstream(
+            namespace=namespace,
+            name=name,
+        )
+
+        affected_jobs = [
+            node
+            for node in downstream
+            if node["node_type"] == "Job"
+        ]
+
+        affected_datasets = [
+            node
+            for node in downstream
+            if node["node_type"] == "Dataset"
+        ]
+
+        max_hops = max(
+            (
+                node["hops"]
+                for node in downstream
+            ),
+            default=0,
+        )
+
+        return {
+            "source": {
+                "node_type": "Job",
+                "namespace": namespace,
+                "name": name,
+            },
+            "affected_jobs": affected_jobs,
+            "affected_datasets": affected_datasets,
+            "affected_job_count": len(
+                affected_jobs
+            ),
+            "affected_dataset_count": len(
+                affected_datasets
+            ),
+            "total_affected_nodes": len(
+                downstream
+            ),
+            "max_hops": max_hops,
+        }
+
+
 if __name__ == "__main__":
     service = LineageQueryService()
 

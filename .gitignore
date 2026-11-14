@@ -48,3 +48,6 @@ dbt/**/*.duckdb
 dbt/**/target/
 dbt/**/logs/
 dbt/**/dbt_packages/
+
+# Generated Spark evidence
+spark/evidence/
