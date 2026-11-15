@@ -423,9 +423,130 @@ services:
       - data-platform-network
 
 
+  # =========================================================
+  # Phase 4 FastAPI Control Plane
+  # =========================================================
+
+  incident-api:
+    build:
+      context: .
+      dockerfile: infrastructure/app/Dockerfile
+      target: api
+    image: incident-recovery-api:phase4f
+    container_name: incident-platform-api
+    restart: unless-stopped
+    init: true
+    read_only: true
+    pids_limit: 256
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=5)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - data-platform-network
+
+
+  # =========================================================
+  # Phase 4 Autonomous Recovery Worker
+  # =========================================================
+
+  recovery-worker:
+    build:
+      context: .
+      dockerfile: infrastructure/app/Dockerfile
+      target: worker
+    image: incident-recovery-worker:phase4f
+    container_name: incident-platform-recovery-worker
+
+    # Explicit opt-in prevents an accidental autonomous worker
+    # startup during a normal `docker compose up`.
+    profiles:
+      - automation
+
+    # DRY_RUN exits after one cycle, so automatic restart would
+    # otherwise create a tight restart loop.
+    restart: "no"
+    init: true
+    stop_grace_period: 20s
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spark:
+        condition: service_started
+      neo4j:
+        condition: service_started
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+
+      INCIDENT_WORKER_POLL_INTERVAL_SECONDS: ${INCIDENT_WORKER_POLL_INTERVAL_SECONDS:-10}
+      INCIDENT_WORKER_MAX_INCIDENTS_PER_CYCLE: ${INCIDENT_WORKER_MAX_INCIDENTS_PER_CYCLE:-1}
+      INCIDENT_WORKER_DRY_RUN: ${INCIDENT_WORKER_DRY_RUN:-true}
+      INCIDENT_WORKER_MAX_AUTONOMOUS_ATTEMPTS: ${INCIDENT_WORKER_MAX_AUTONOMOUS_ATTEMPTS:-3}
+      INCIDENT_WORKER_QUEUE_CLAIM_SECONDS: ${INCIDENT_WORKER_QUEUE_CLAIM_SECONDS:-300}
+      INCIDENT_WORKER_QUEUE_HEARTBEAT_INTERVAL_SECONDS: ${INCIDENT_WORKER_QUEUE_HEARTBEAT_INTERVAL_SECONDS:-60}
+      INCIDENT_WORKER_RETRY_BASE_SECONDS: ${INCIDENT_WORKER_RETRY_BASE_SECONDS:-60}
+      INCIDENT_WORKER_RETRY_MAX_SECONDS: ${INCIDENT_WORKER_RETRY_MAX_SECONDS:-1800}
+    volumes:
+      - ./spark:/app/spark:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - data-platform-network
+
+
+
 # =========================================================
 # Persistent Volumes
 # =========================================================
+
 volumes:
   postgres_data:
   kafka_data:

@@ -7,7 +7,7 @@
 - Phase 4C — FastAPI Control Plane: COMPLETE
 - Phase 4D — Metrics / Dashboard: COMPLETE
 - Phase 4E — Integration / Chaos Testing: COMPLETE
-- Phase 4F — CI/CD / Deployment Readiness: PENDING
+- Phase 4F — CI/CD / Deployment Readiness: COMPLETE
 
 ## Phase 4A — Autonomous Incident Worker
 
@@ -1148,7 +1148,7 @@ Phase 3 and Phase 4B remain authoritative for recovery behavior.
 
 ## Next Phase
 
-Phase 4F will focus on CI/CD and deployment readiness, including automated test execution, container/deployment configuration, environment validation, operational startup checks, and production-readiness documentation.
+Phase 4F implements CI/CD and deployment readiness, including automated testing, deployment packaging, environment validation, operational readiness checks, and production configuration hardening.
 
 ## Phase 4E — Integration and Chaos Testing
 
@@ -1329,4 +1329,27 @@ Phase 4E demonstrates that the platform maintains its core safety guarantees und
 
 **PHASE 4E — COMPLETE**
 
-Next phase: **Phase 4F — CI/CD and Deployment Readiness**
+## Phase 4F — CI/CD and Deployment Readiness
+
+**Status: COMPLETE**
+
+Phase 4F adds CI/CD and deployment readiness around the frozen recovery engine.
+
+Implemented:
+- GitHub Actions integration-test workflow
+- deterministic PostgreSQL bootstrap via `scripts/init_test_db.sh`
+- containerized FastAPI control plane and recovery worker
+- `.env.example` expansion and `scripts/validate_env.py`
+- `/health` liveness and `/ready` PostgreSQL readiness
+- non-root, read-only hardened API container
+- localhost-only API exposure
+- bounded container logging
+- explicit `automation` worker profile
+- dry-run worker default
+- worker Docker-socket compatibility with the existing Spark recovery executor
+
+Current integration baseline: **57 passed**
+
+The Docker socket remains an intentional local/current-architecture security boundary. A production deployment should replace it with a narrower recovery execution service or orchestration API.
+
+**PHASE 4F — COMPLETE**

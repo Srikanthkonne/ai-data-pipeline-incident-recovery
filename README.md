@@ -1498,3 +1498,20 @@ Real Phase 4A validation:
 Detailed documentation: `docs/phase_4_platformization.md`
 
 **PHASE 4A — COMPLETE**
+
+### Phase 4 Platformization Status
+
+- Phase 4A — Autonomous Incident Worker: COMPLETE
+- Phase 4B — Retry / Backoff / Requeue: COMPLETE
+- Phase 4C — FastAPI Control Plane: COMPLETE
+- Phase 4D — Metrics / Dashboard: COMPLETE
+- Phase 4E — Integration / Chaos Testing: COMPLETE
+- Phase 4F — CI/CD / Deployment Readiness: COMPLETE
+
+Current integration baseline: **57 passed**
+
+The API provides `/health`, `/ready`, `/metrics/summary`, `/metrics`, and `/dashboard`.
+
+The autonomous worker is isolated behind the `automation` Compose profile and defaults to `INCIDENT_WORKER_DRY_RUN=true`.
+
+Detailed Phase 4 documentation: `docs/phase_4_platformization.md`
