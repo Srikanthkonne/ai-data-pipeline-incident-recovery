@@ -297,3 +297,59 @@ def get_incident_by_pipeline_run(
 
     finally:
         conn.close()
+
+
+def get_automation_candidates(
+    limit: int = 1,
+) -> list[dict[str, Any]]:
+    """
+    Return OPEN incidents explicitly opted in for autonomous processing.
+
+    The metadata flag controls worker eligibility only.
+    Recovery authorization remains the responsibility of the
+    deterministic recovery policy.
+    """
+    if limit <= 0:
+        raise ValueError("limit must be greater than 0.")
+
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor(
+            cursor_factory=RealDictCursor
+        ) as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM incidents
+                WHERE status = 'OPEN'
+                  AND metadata ->> 'automation_eligible' = 'true'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM recovery_attempts ra
+                      WHERE ra.incident_id = incidents.incident_id
+                  )
+                ORDER BY
+                    CASE severity
+                        WHEN 'CRITICAL' THEN 1
+                        WHEN 'HIGH' THEN 2
+                        WHEN 'MEDIUM' THEN 3
+                        WHEN 'LOW' THEN 4
+                        ELSE 5
+                    END,
+                    detected_at ASC,
+                    incident_id ASC
+                LIMIT %s;
+                """,
+                (limit,),
+            )
+
+            incidents = cursor.fetchall()
+
+        return [
+            dict(incident)
+            for incident in incidents
+        ]
+
+    finally:
+        conn.close()

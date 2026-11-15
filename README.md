@@ -1471,3 +1471,30 @@ FULL REAL END-TO-END RECOVERY       COMPLETE
 ```
 
 **PHASE 3 — COMPLETE**
+
+---
+
+# 52. Phase 4 — Platformization & Autonomous Operations
+
+Phase 4 converts the hardened Phase 3 recovery engine into an autonomous operational platform.
+
+Phase 4A adds an autonomous incident worker around the existing Phase 3 recovery orchestrator.
+
+Candidate selection requires:
+
+- status = OPEN
+- automation_eligible = true
+- no previous recovery_attempt
+
+This provides at-most-once autonomous dispatch in Phase 4A. Retry, backoff, and requeue are deferred to Phase 4B.
+
+Real Phase 4A validation:
+
+- Incident 10 → OPEN; Recovery Attempt 27 → RCA_FAILED
+- Incident 11 → RESOLVED; Recovery Attempt 28 → COMPLETED
+- Recovery action → RESTORE_SCHEMA_DRIFT_BACKUP
+- Final Silver → healthy, 15 columns, 0 remaining detections
+
+Detailed documentation: `docs/phase_4_platformization.md`
+
+**PHASE 4A — COMPLETE**
