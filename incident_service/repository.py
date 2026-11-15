@@ -83,6 +83,42 @@ def get_incident(incident_id: int) -> Optional[dict[str, Any]]:
     finally:
         conn.close()
 
+def list_incidents(
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """
+    Retrieve the most recent incidents.
+    """
+    if limit <= 0 or limit > 500:
+        raise ValueError(
+            "limit must be between 1 and 500."
+        )
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor(
+            cursor_factory=RealDictCursor
+        ) as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM incidents
+                ORDER BY
+                    detected_at DESC,
+                    incident_id DESC
+                LIMIT %s;
+                """,
+                (limit,),
+            )
+            incidents = cursor.fetchall()
+
+        return [
+            dict(incident)
+            for incident in incidents
+        ]
+    finally:
+        conn.close()
+
 
 ALLOWED_STATUS_TRANSITIONS = {
     "OPEN": {"INVESTIGATING"},

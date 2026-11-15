@@ -4,7 +4,7 @@
 
 - Phase 4A — Autonomous Incident Worker: COMPLETE
 - Phase 4B — Retry / Backoff / Requeue: COMPLETE
-- Phase 4C — FastAPI Control Plane: PENDING
+- Phase 4C — FastAPI Control Plane: COMPLETE
 - Phase 4D — Metrics / Dashboard: PENDING
 - Phase 4E — Integration / Chaos Testing: PENDING
 - Phase 4F — CI/CD / Deployment Readiness: PENDING
@@ -562,6 +562,284 @@ The LLM remains advisory. Deterministic evidence, policy, fencing, validation, r
 
 **PHASE 4B — COMPLETE**
 
+## Phase 4C — FastAPI Control Plane
+
+Phase 4C adds a thin FastAPI control plane around the existing incident, recovery-attempt, and recovery-queue repositories.
+
+The API does not duplicate Phase 3 recovery orchestration or Phase 4B queue logic. Existing repositories and recovery components remain authoritative.
+
+### Architecture
+
+Operator / API Client
+
+→ FastAPI Control Plane
+
+→ Incident Repository / Recovery Repository / Recovery Queue Repository
+
+→ PostgreSQL
+
+Operator actions such as manual requeue delegate to the existing Phase 4B queue repository instead of modifying queue state directly.
+
+### Components
+
+- `api/main.py` — FastAPI application and router registration
+
+- `api/routes/health.py` — service health endpoint
+
+- `api/routes/incidents.py` — incident inspection, recovery history, queue visibility, and manual requeue
+
+- `api/schemas/recovery.py` — validated operator request models
+
+- `incident_service/repository.py` — incident listing support
+
+### API Surface
+
+Phase 4C exposes six v1 endpoints:
+
+- `GET /health`
+
+- `GET /incidents`
+
+- `GET /incidents/{incident_id}`
+
+- `GET /incidents/{incident_id}/recovery-attempts`
+
+- `GET /incidents/{incident_id}/recovery-queue`
+
+- `POST /incidents/{incident_id}/requeue`
+
+### Endpoint Behavior
+
+#### `GET /health`
+
+Returns control-plane health metadata.
+
+Validated:
+
+- HTTP 200
+
+- service: `incident-recovery-control-plane`
+
+- phase: `4C`
+
+#### `GET /incidents`
+
+Returns the most recent incidents ordered by detection time and incident ID.
+
+The `limit` query parameter:
+
+- defaults to 100
+
+- minimum: 1
+
+- maximum: 500
+
+Invalid limits are rejected by FastAPI request validation.
+
+#### `GET /incidents/{incident_id}`
+
+Returns one incident.
+
+Validated behavior:
+
+- existing incident → HTTP 200
+
+- unknown incident → HTTP 404
+
+#### `GET /incidents/{incident_id}/recovery-attempts`
+
+Returns immutable recovery-attempt history for an incident.
+
+Incident 10 returned six historical recovery attempts:
+
+- 27 — `RCA_FAILED`
+
+- 29 — `DRY_RUN`
+
+- 30 — `RCA_FAILED`
+
+- 31 — `RCA_FAILED`
+
+- 32 — `RCA_FAILED`
+
+- 33 — `ALREADY_RECOVERED`
+
+Unknown incidents return HTTP 404.
+
+#### `GET /incidents/{incident_id}/recovery-queue`
+
+Returns the current durable recovery-queue row for an incident.
+
+Validated behavior:
+
+- Incident 10 → HTTP 200, state `COMPLETED`, autonomous attempt count 1, last recovery attempt 33, last status `ALREADY_RECOVERED`
+
+- Incident 11 → HTTP 404 because no recovery queue row exists
+
+#### `POST /incidents/{incident_id}/requeue`
+
+Provides an operator-controlled manual requeue action.
+
+Request body contains `max_attempts`, which defaults to 3 and must be greater than or equal to 1.
+
+Safety rules:
+
+- unknown incident → HTTP 404
+
+- missing recovery queue item → HTTP 404
+
+- only `EXHAUSTED` or `TERMINAL` queue items may be requeued
+
+- `READY`, `PROCESSING`, `RETRY_WAIT`, and `COMPLETED` are rejected with HTTP 409
+
+- invalid values such as `max_attempts=0` are rejected with HTTP 422
+
+- successful requeue delegates to existing `manual_requeue_recovery()`
+
+The API does not directly modify queue state with route-level SQL.
+
+### Controlled Requeue Validation
+
+Incident 9 was used as a temporary Phase 4C API fixture.
+
+The queue was deliberately transitioned:
+
+`READY` → `PROCESSING` → `EXHAUSTED`
+
+with `max_attempts=1`.
+
+The API then requeued Incident 9 with `max_attempts=3`.
+
+Verified result:
+
+- HTTP 200
+
+- queue state `EXHAUSTED` → `READY`
+
+- autonomous attempt count 1 → 0
+
+- max attempts 1 → 3
+
+- queue claim cleared
+
+The temporary Incident 9 recovery queue row was deleted after validation.
+
+Incident 9 remained unchanged at the business level:
+
+- status: `OPEN`
+
+- severity: `HIGH`
+
+### Completed-State Protection
+
+Incident 10 already had a successfully completed recovery queue item.
+
+A manual requeue request against Incident 10 returned HTTP 409.
+
+The completed recovery was not reopened.
+
+### OpenAPI Validation
+
+The generated OpenAPI contract exposes exactly the intended Phase 4C v1 surface:
+
+- `/health`
+
+- `/incidents`
+
+- `/incidents/{incident_id}`
+
+- `/incidents/{incident_id}/recovery-attempts`
+
+- `/incidents/{incident_id}/recovery-queue`
+
+- `/incidents/{incident_id}/requeue`
+
+### Live Uvicorn Validation
+
+The FastAPI application was started through Uvicorn on `127.0.0.1:8000`.
+
+Live HTTP validation confirmed:
+
+- `GET /health` → HTTP 200
+
+- `GET /incidents?limit=3` → HTTP 200 with live PostgreSQL-backed incident records
+
+The Uvicorn process then completed a graceful application shutdown.
+
+### Dependencies
+
+Phase 4C adds:
+
+- FastAPI `0.163.0`
+
+- Uvicorn `0.54.0`
+
+- Pydantic `2.14.3`
+
+- Starlette `1.10.0`
+
+- `httpx2` `2.16.0` for TestClient compatibility
+
+### Phase 4C Safety Chain
+
+Operator / Client
+
+→ FastAPI request validation
+
+→ Incident existence validation
+
+→ Queue existence validation
+
+→ Queue-state authorization
+
+→ Existing repository operation
+
+→ Existing Phase 4B state-transition rules
+
+The control plane remains intentionally thin.
+
+Recovery execution continues to flow through the hardened Phase 3 recovery orchestrator and Phase 4B autonomous queue worker.
+
+The LLM remains advisory. The API does not bypass deterministic policy, provenance, fencing, queue ownership, replay protection, or mandatory validation.
+
+## Final Phase 4C Validation
+
+- FastAPI application startup: PASS
+
+- Health endpoint: PASS
+
+- Incident list endpoint: PASS
+
+- Incident lookup endpoint: PASS
+
+- Recovery-attempt history endpoint: PASS
+
+- Recovery-queue visibility endpoint: PASS
+
+- Missing queue handling: PASS
+
+- Unknown incident handling: PASS
+
+- Completed-state requeue protection: PASS
+
+- Controlled exhausted-state manual requeue: PASS
+
+- Request-body validation: PASS
+
+- OpenAPI route contract: PASS
+
+- Live Uvicorn HTTP validation: PASS
+
+- Graceful Uvicorn shutdown: PASS
+
+- Repository-layer separation: PASS
+
+- Python compilation: PASS
+
+- Git whitespace check: PASS
+
+**PHASE 4C — COMPLETE**
+
 ## Next Phase
 
-Phase 4C will add a FastAPI control plane for incident inspection, recovery queue visibility, operator actions, manual requeue, and recovery status access.
+Phase 4D will add operational metrics and dashboard visibility for incidents, recovery queue state, retry behavior, autonomous recovery outcomes, and recovery performance.
