@@ -6,7 +6,7 @@
 - Phase 4B — Retry / Backoff / Requeue: COMPLETE
 - Phase 4C — FastAPI Control Plane: COMPLETE
 - Phase 4D — Metrics / Dashboard: COMPLETE
-- Phase 4E — Integration / Chaos Testing: PENDING
+- Phase 4E — Integration / Chaos Testing: COMPLETE
 - Phase 4F — CI/CD / Deployment Readiness: PENDING
 
 ## Phase 4A — Autonomous Incident Worker
@@ -1148,4 +1148,185 @@ Phase 3 and Phase 4B remain authoritative for recovery behavior.
 
 ## Next Phase
 
-Phase 4E will add integration and chaos testing for worker crashes, expired claims, stale fencing, provider failures, execution failures, validation failures, retry exhaustion, concurrent workers, and already-recovered scenarios.
+Phase 4F will focus on CI/CD and deployment readiness, including automated test execution, container/deployment configuration, environment validation, operational startup checks, and production-readiness documentation.
+
+## Phase 4E — Integration and Chaos Testing
+
+**Status: COMPLETE**
+
+Phase 4E validates the reliability and safety guarantees implemented across the autonomous incident-recovery platform. The tests intentionally exercise queue contention, stale ownership, expired leases, retry behavior, worker failures, orchestration failures, idempotency safeguards, and operational observability without invoking destructive production recovery actions.
+
+### Test Infrastructure
+
+- `pytest==9.2.0`
+- Project-level `pytest.ini`
+- Integration tests located under `tests/integration/`
+- Temporary test incidents use `metadata.phase4e_test = true`
+- Test fixtures remove queue rows, recovery attempts, and incidents after validation
+- Existing Phase 3 and Phase 4 validation history is preserved
+
+### Phase 4E.1 — Recovery Queue Chaos
+
+File:
+
+`tests/integration/test_recovery_queue_chaos.py`
+
+Validated:
+
+- expired queue claims are reclaimed
+- stale claim tokens are fenced
+- a second worker cannot claim an actively owned queue item
+- retry exhaustion transitions to `EXHAUSTED`
+- explicit operator requeue resets the bounded retry window
+
+Result:
+
+`4 passed`
+
+### Phase 4E.2 — Recovery Lease and Execution Fencing
+
+File:
+
+`tests/integration/test_recovery_execution_chaos.py`
+
+Validated:
+
+- only one active recovery attempt may exist per incident
+- expired recovery leases cannot be refreshed
+- an expired attempt cannot cross the destructive execution boundary
+- a stale recovery attempt remains fenced after a new owner is created
+- `recovery_attempt_id` continues to function as the application-level execution fencing token
+
+Result:
+
+`4 passed`
+
+### Phase 4E.3 — Failure Classification and Retry Policy
+
+File:
+
+`tests/integration/test_retry_policy.py`
+
+Validated:
+
+- retryable outcomes
+- terminal outcomes
+- successful outcomes
+- unknown outcomes fail closed as terminal
+- normalization of orchestration status values
+- exponential retry backoff
+- retry backoff cap
+- invalid retry configuration rejection
+- recovery error extraction and fallback behavior
+
+Result:
+
+`26 passed`
+
+### Phase 4E.4 — Autonomous Worker Failure Injection
+
+File:
+
+`tests/integration/test_worker_failure_injection.py`
+
+Validated the real autonomous worker queue-transition logic while mocking only the `recover_incident` boundary.
+
+Scenarios include:
+
+- `RCA_FAILED` to `RETRY_WAIT`
+- `EXECUTION_FAILED` to `RETRY_WAIT`
+- `VALIDATION_FAILED` to `RETRY_WAIT`
+- unexpected worker exception to `WORKER_ERROR`
+- final retry to `EXHAUSTED`
+- deterministic terminal outcomes to `TERMINAL`
+- unknown outcomes fail closed to `TERMINAL`
+- successful recovery outcomes to `COMPLETED`
+
+Result:
+
+`10 passed`
+
+### Phase 4E.5 — Orchestrator Failure Injection
+
+File:
+
+`tests/integration/test_orchestrator_failure_injection.py`
+
+Validated the real `recover_incident()` orchestration state machine while mocking external or destructive boundaries.
+
+Scenarios include:
+
+- RCA provider exception to `RCA_FAILED`
+- policy exception to `POLICY_FAILED`
+- execution exception to `EXECUTION_FAILED`
+- validation exception to `VALIDATION_ERROR`
+- unhealthy post-execution validation to `VALIDATION_FAILED`
+- already healthy precheck to `ALREADY_RECOVERED`
+- successful execution and validation to incident `RESOLVED` with recovery audit `COMPLETED`
+
+Gemini and Spark recovery execution were not invoked by these tests.
+
+Result:
+
+`7 passed`
+
+### Phase 4E.6 — Operational Observability Integration
+
+File:
+
+`tests/integration/test_operational_observability.py`
+
+Validated that controlled temporary failure states are visible through the Phase 4D observability layer.
+
+Validated:
+
+- temporary OPEN incidents appear in operational metrics
+- `EXECUTION_FAILED` recovery attempts appear in metrics
+- `RETRY_WAIT` queue items appear in metrics
+- autonomous attempt counts update correctly
+- `/metrics/summary` exposes the temporary failure state
+- `/metrics` exposes the expected Prometheus labels
+- cleanup restores the original metrics baseline
+
+Result:
+
+`3 passed`
+
+### Final Phase 4E Regression
+
+Complete integration suite:
+
+`pytest -q tests/integration`
+
+Final result:
+
+`54 passed`
+
+Database cleanup verification:
+
+`phase4e_test_incidents = 0`
+
+No temporary Phase 4E incidents remain in PostgreSQL after the suite.
+
+### Phase 4E Safety Result
+
+Phase 4E demonstrates that the platform maintains its core safety guarantees under controlled failure and concurrency conditions:
+
+- single-owner queue processing
+- stale queue-claim fencing
+- stale recovery-attempt fencing
+- finite recovery leases
+- bounded autonomous retries
+- retry exhaustion
+- explicit operator requeue
+- deterministic failure classification
+- fail-closed handling of unknown outcomes
+- pre-execution idempotency protection
+- recovery auditing
+- incident lifecycle integrity
+- observability of operational failure states
+- cleanup without modification of frozen historical validation records
+
+**PHASE 4E — COMPLETE**
+
+Next phase: **Phase 4F — CI/CD and Deployment Readiness**
