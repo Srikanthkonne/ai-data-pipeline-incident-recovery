@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Incident Recovery Operations</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fa; color: #1f2937; }
+    header { background: #111827; color: white; padding: 24px 32px; }
+    main { padding: 28px 32px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .card { background: white; border-radius: 10px; padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .label { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
+    .value { font-size: 28px; font-weight: 700; }
+    h2 { margin-top: 30px; }
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
+    th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+    th { background: #f9fafb; }
+    .status { color: #6b7280; font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AI Data Pipeline Incident Recovery</h1>
+    <div>Operational Dashboard · Phase 4D</div>
+  </header>
+  <main>
+    <div id="status" class="status">Loading operational metrics...</div>
+
+    <h2>Platform KPIs</h2>
+    <div class="grid">
+      <div class="card"><div class="label">Total Incidents</div><div class="value" id="total-incidents">-</div></div>
+      <div class="card"><div class="label">Open Incidents</div><div class="value" id="open-incidents">-</div></div>
+      <div class="card"><div class="label">Resolved Incidents</div><div class="value" id="resolved-incidents">-</div></div>
+      <div class="card"><div class="label">MTTR</div><div class="value" id="mttr">-</div></div>
+      <div class="card"><div class="label">Resolution Rate</div><div class="value" id="resolution-rate">-</div></div>
+      <div class="card"><div class="label">Recovery Success Rate</div><div class="value" id="success-rate">-</div></div>
+    </div>
+
+    <h2>Recovery Queue</h2>
+    <table><thead><tr><th>State</th><th>Count</th></tr></thead><tbody id="queue-body"></tbody></table>
+
+    <h2>Recovery Attempts</h2>
+    <table><thead><tr><th>Status</th><th>Count</th></tr></thead><tbody id="attempt-body"></tbody></table>
+  </main>
+
+  <script>
+    async function loadMetrics() {
+      const status = document.getElementById("status");
+      try {
+        const response = await fetch("/metrics/summary");
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        document.getElementById("total-incidents").textContent = data.incidents.total;
+        document.getElementById("open-incidents").textContent = data.incidents.by_status.OPEN;
+        document.getElementById("resolved-incidents").textContent = data.incidents.by_status.RESOLVED;
+        document.getElementById("mttr").textContent = data.incidents.mean_time_to_resolution_seconds === null ? "N/A" : `${(data.incidents.mean_time_to_resolution_seconds / 60).toFixed(2)} min`;
+        document.getElementById("resolution-rate").textContent = data.kpis.incident_resolution_rate === null ? "N/A" : `${(data.kpis.incident_resolution_rate * 100).toFixed(2)}%`;
+        document.getElementById("success-rate").textContent = data.kpis.recovery_attempt_success_rate === null ? "N/A" : `${(data.kpis.recovery_attempt_success_rate * 100).toFixed(2)}%`;
+
+        document.getElementById("queue-body").innerHTML = Object.entries(data.recovery_queue.by_state)
+          .map(([state, count]) => `<tr><td>${state}</td><td>${count}</td></tr>`).join("");
+
+        document.getElementById("attempt-body").innerHTML = Object.entries(data.recovery_attempts.by_status)
+          .map(([state, count]) => `<tr><td>${state}</td><td>${count}</td></tr>`).join("");
+
+        status.textContent = `Live metrics loaded · ${new Date().toLocaleTimeString()}`;
+      } catch (error) {
+        status.textContent = `Metrics unavailable: ${error.message}`;
+      }
+    }
+
+    loadMetrics();
+    setInterval(loadMetrics, 10000);
+  </script>
+</body>
+</html>

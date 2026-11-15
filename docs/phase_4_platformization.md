@@ -5,7 +5,7 @@
 - Phase 4A — Autonomous Incident Worker: COMPLETE
 - Phase 4B — Retry / Backoff / Requeue: COMPLETE
 - Phase 4C — FastAPI Control Plane: COMPLETE
-- Phase 4D — Metrics / Dashboard: PENDING
+- Phase 4D — Metrics / Dashboard: COMPLETE
 - Phase 4E — Integration / Chaos Testing: PENDING
 - Phase 4F — CI/CD / Deployment Readiness: PENDING
 
@@ -840,6 +840,312 @@ The LLM remains advisory. The API does not bypass deterministic policy, provenan
 
 **PHASE 4C — COMPLETE**
 
+## Phase 4D — Metrics and Operational Dashboard
+
+Phase 4D adds read-only operational observability around the existing incident recovery platform.
+
+No Phase 3 recovery logic or Phase 4B queue behavior is changed. Metrics are derived from the persisted `incidents`, `recovery_attempts`, and `recovery_queue` tables.
+
+### Architecture
+
+PostgreSQL
+
+→ Metrics Aggregation Repository
+
+→ FastAPI JSON Summary / Prometheus Exposition
+
+→ Operational Dashboard
+
+The metrics layer remains read-only and reuses the existing database connection pattern.
+
+### Components
+
+- `incident_service/metrics/repository.py` — operational aggregation and KPI calculation
+
+- `incident_service/metrics/prometheus.py` — Prometheus exposition formatting
+
+- `api/routes/metrics.py` — JSON summary and Prometheus endpoints
+
+- `api/routes/dashboard.py` — dashboard HTML route
+
+- `dashboard/index.html` — browser-based operational dashboard
+
+### Metrics API
+
+Phase 4D exposes:
+
+- `GET /metrics/summary` — JSON operational summary
+
+- `GET /metrics` — Prometheus-compatible exposition
+
+- `GET /dashboard` — browser-based operational dashboard
+
+### Operational Summary
+
+The summary includes:
+
+- incident totals and lifecycle-state counts
+
+- mean time to resolution for resolved incidents
+
+- recovery-attempt totals grouped by status
+
+- recovery-queue counts grouped by state
+
+- accumulated autonomous attempt count
+
+- incident resolution rate
+
+- recovery-attempt success rate
+
+- queue completion rate
+
+- mean autonomous attempts per queue item
+
+### Validated Operational Baseline
+
+The Phase 4D repository was validated directly against PostgreSQL before exposing metrics through the API.
+
+Validated incident state:
+
+- total incidents: 11
+
+- `OPEN`: 4
+
+- `INVESTIGATING`: 0
+
+- `RECOVERING`: 0
+
+- `RESOLVED`: 7
+
+- mean time to resolution: 1887.97 seconds, approximately 31.47 minutes
+
+Validated recovery-attempt history:
+
+- total attempts: 30
+
+- `ALREADY_RECOVERED`: 2
+
+- `COMPLETED`: 4
+
+- `DRY_RUN`: 11
+
+- `EXECUTION_FAILED`: 1
+
+- `LEASE_EXPIRED`: 4
+
+- `MANUAL_REVIEW`: 1
+
+- `POLICY_FAILED`: 1
+
+- `PRECHECK_ERROR`: 1
+
+- `RCA_FAILED`: 5
+
+Validated recovery queue state:
+
+- total queue items: 1
+
+- `COMPLETED`: 1
+
+- all other queue states: 0
+
+- accumulated autonomous attempts: 1
+
+### Derived KPI Definitions
+
+`incident_resolution_rate`
+
+= resolved incidents / total incidents
+
+Validated value: `0.6364`.
+
+`recovery_attempt_success_rate`
+
+= (`COMPLETED` + `ALREADY_RECOVERED`) / all non-`DRY_RUN` recovery attempts
+
+Validated value: `0.3158`.
+
+`queue_completion_rate`
+
+= `COMPLETED` / (`COMPLETED` + `EXHAUSTED` + `TERMINAL`)
+
+Validated value: `1.0`.
+
+`mean_autonomous_attempts_per_queue_item`
+
+= accumulated autonomous attempt count / current recovery queue rows
+
+Validated value: `1.0`.
+
+### JSON Metrics Endpoint
+
+`GET /metrics/summary` returns the live operational summary from the shared metrics repository.
+
+FastAPI validation confirmed:
+
+- HTTP 200
+
+- incident aggregates match the PostgreSQL baseline
+
+- recovery-attempt aggregates match the PostgreSQL baseline
+
+- recovery-queue aggregates match the PostgreSQL baseline
+
+- derived KPI values match the expected calculations
+
+- `/metrics/summary` is present in the generated OpenAPI contract
+
+### Prometheus Exposition
+
+`GET /metrics` exposes the same operational state in Prometheus text format.
+
+Phase 4D uses a fresh `CollectorRegistry` per request so repeated scrapes do not create duplicate metric-registration errors.
+
+Validated Prometheus metrics include:
+
+- `incident_recovery_incidents`
+
+- `incident_recovery_incidents_by_status`
+
+- `incident_recovery_mean_time_to_resolution_seconds`
+
+- `incident_recovery_recovery_attempts`
+
+- `incident_recovery_recovery_attempts_by_status`
+
+- `incident_recovery_queue_items`
+
+- `incident_recovery_queue_items_by_state`
+
+- `incident_recovery_autonomous_attempts`
+
+- `incident_recovery_incident_resolution_rate`
+
+- `incident_recovery_recovery_attempt_success_rate`
+
+- `incident_recovery_queue_completion_rate`
+
+- `incident_recovery_mean_autonomous_attempts_per_queue_item`
+
+Repeated scrape validation confirmed:
+
+- first scrape → HTTP 200
+
+- second scrape → HTTP 200
+
+- repeated payload remained consistent
+
+- no duplicate-registration failure occurred
+
+### Operational Dashboard
+
+`GET /dashboard` serves the lightweight browser-based operational dashboard from `dashboard/index.html`.
+
+The dashboard fetches `/metrics/summary` and refreshes the operational view every 10 seconds.
+
+Displayed information includes:
+
+- total incidents
+
+- open incidents
+
+- resolved incidents
+
+- mean time to resolution
+
+- incident resolution rate
+
+- recovery-attempt success rate
+
+- recovery queue state table
+
+- recovery-attempt outcome table
+
+### Live Uvicorn and Browser Validation
+
+The Phase 4D FastAPI application was started through Uvicorn on `127.0.0.1:8000`.
+
+Live HTTP validation confirmed:
+
+- `GET /dashboard` → HTTP 200
+
+- `GET /metrics/summary` → HTTP 200
+
+- `GET /metrics` → HTTP 200
+
+The dashboard was opened successfully in a desktop browser and rendered the operational interface.
+
+The Uvicorn process then completed a clean shutdown.
+
+### Dependencies
+
+Phase 4D adds:
+
+- `prometheus-client==0.26.0`
+
+No additional dashboard framework is required.
+
+### Phase 4D Safety Boundary
+
+PostgreSQL operational state
+
+→ Read-only aggregation
+
+→ JSON / Prometheus presentation
+
+→ Dashboard visualization
+
+The metrics and dashboard layers do not mutate incident state, recovery attempts, queue ownership, recovery policy, or recovery execution.
+
+Phase 3 and Phase 4B remain authoritative for recovery behavior.
+
+## Final Phase 4D Validation
+
+- Metrics repository aggregation: PASS
+
+- PostgreSQL baseline comparison: PASS
+
+- Incident lifecycle aggregation: PASS
+
+- Recovery-attempt aggregation: PASS
+
+- Recovery-queue aggregation: PASS
+
+- MTTR calculation: PASS
+
+- Derived KPI calculations: PASS
+
+- JSON metrics endpoint: PASS
+
+- Prometheus exposition endpoint: PASS
+
+- Zero-value queue-state exposition: PASS
+
+- Repeated Prometheus scrape safety: PASS
+
+- Metrics OpenAPI registration: PASS
+
+- Dashboard route: PASS
+
+- Dashboard metrics integration: PASS
+
+- Dashboard automatic refresh: PASS
+
+- Live Uvicorn HTTP validation: PASS
+
+- Desktop browser dashboard validation: PASS
+
+- Graceful Uvicorn shutdown: PASS
+
+- Read-only observability boundary: PASS
+
+- Python compilation: PASS
+
+- Git whitespace check: PASS
+
+**PHASE 4D — COMPLETE**
+
 ## Next Phase
 
-Phase 4D will add operational metrics and dashboard visibility for incidents, recovery queue state, retry behavior, autonomous recovery outcomes, and recovery performance.
+Phase 4E will add integration and chaos testing for worker crashes, expired claims, stale fencing, provider failures, execution failures, validation failures, retry exhaustion, concurrent workers, and already-recovered scenarios.
