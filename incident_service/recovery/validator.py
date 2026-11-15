@@ -1,15 +1,21 @@
 import json
-import subprocess
-
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+
+from incident_service.recovery.adapters import (
+    ExecutionAdapterError,
+    ExecutionAdapterTimeoutError,
+    ExecutionStep,
+    RecoveryExecutionAdapter,
+)
+from incident_service.recovery.adapters.local_docker import (
+    LocalDockerExecutionAdapter,
+)
 
 from incident_service.rules.schema_drift import (
     compare_schema,
 )
 
-
-SPARK_CONTAINER = "incident-platform-spark"
 
 CAPTURE_SCRIPT = (
     "/opt/spark/work-dir/jobs/"
@@ -20,9 +26,8 @@ EVIDENCE_PATH = Path(
     "spark/evidence/silver_schema.json"
 )
 
-SPARK_PACKAGES = (
-    "org.apache.hadoop:hadoop-aws:3.3.4,"
-    "com.amazonaws:aws-java-sdk-bundle:1.12.262"
+DEFAULT_VALIDATION_ADAPTER = (
+    LocalDockerExecutionAdapter()
 )
 
 
@@ -31,6 +36,10 @@ class RecoveryValidationError(RuntimeError):
 
 
 def validate_schema_drift_recovery(
+    *,
+    execution_adapter: Optional[
+        RecoveryExecutionAdapter
+    ] = None,
 ) -> dict[str, Any]:
     """
     Capture the current Silver dataset state and
@@ -44,38 +53,30 @@ def validate_schema_drift_recovery(
     interpreted as a recoverable schema problem.
     """
 
-    command = [
-        "docker",
-        "exec",
-        SPARK_CONTAINER,
-        "/opt/spark/bin/spark-submit",
-        "--packages",
-        SPARK_PACKAGES,
-        "--conf",
-        (
-            "spark.driver.extraJavaOptions="
-            "-Divy.cache.dir=/tmp/.ivy2"
-        ),
-        "--conf",
-        "spark.jars.ivy=/tmp/.ivy2",
-        CAPTURE_SCRIPT,
-    ]
+    adapter = (
+        execution_adapter
+        or DEFAULT_VALIDATION_ADAPTER
+    )
+
+    step = ExecutionStep(
+        operation="RUN_SPARK_SCRIPT",
+        parameters={
+            "script_path": CAPTURE_SCRIPT,
+        },
+    )
 
     try:
-        completed = subprocess.run(
-            command,
-            check=True,
-            text=True,
-            capture_output=True,
-            timeout=180,
+        completed = adapter.execute_step(
+            step,
+            timeout_seconds=180,
         )
 
-    except subprocess.TimeoutExpired as exc:
+    except ExecutionAdapterTimeoutError as exc:
         raise RecoveryValidationError(
             "Schema validation timed out."
         ) from exc
 
-    except subprocess.CalledProcessError as exc:
+    except ExecutionAdapterError as exc:
         raise RecoveryValidationError(
             "Schema validation command failed."
         ) from exc

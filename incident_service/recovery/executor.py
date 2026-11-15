@@ -1,12 +1,18 @@
-import subprocess
+from incident_service.recovery.adapters import (
+    ExecutionAdapterError,
+    ExecutionAdapterTimeoutError,
+    ExecutionStep,
+    RecoveryExecutionAdapter,
+)
+from incident_service.recovery.adapters.local_docker import (
+    LocalDockerExecutionAdapter,
+)
 
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable, Optional
 
-
-SPARK_CONTAINER = "incident-platform-spark"
 
 RESTORE_SCRIPT_HOST = Path(
     "failure_injection/scenarios/"
@@ -17,17 +23,10 @@ RESTORE_SCRIPT_CONTAINER = (
     "/tmp/restore_schema_drift.py"
 )
 
-SPARK_SUBMIT = (
-    "/opt/spark/bin/spark-submit"
-)
-
-SPARK_PACKAGES = (
-    "org.apache.hadoop:hadoop-aws:3.3.4,"
-    "com.amazonaws:aws-java-sdk-bundle:1.12.262"
-)
-
 MAX_CAPTURED_LOG_CHARS = 4000
 MAX_ERROR_LOG_CHARS = 2000
+
+DEFAULT_EXECUTION_ADAPTER = LocalDockerExecutionAdapter()
 
 
 class RecoveryExecutionError(RuntimeError):
@@ -51,7 +50,7 @@ def _normalize_output(
     value: Any,
 ) -> str:
     """
-    Normalize subprocess output to safe text.
+    Normalize execution output to safe text.
     """
 
     if value is None:
@@ -96,39 +95,31 @@ def _truncate_tail(
     }
 
 
-def _schema_drift_restore_commands() -> list[list[str]]:
+def _schema_drift_restore_steps() -> list[ExecutionStep]:
     return [
-        [
-            "docker",
-            "cp",
-            str(RESTORE_SCRIPT_HOST),
-            (
-                f"{SPARK_CONTAINER}:"
-                f"{RESTORE_SCRIPT_CONTAINER}"
-            ),
-        ],
-        [
-            "docker",
-            "exec",
-            SPARK_CONTAINER,
-            SPARK_SUBMIT,
-            "--packages",
-            SPARK_PACKAGES,
-            "--conf",
-            (
-                "spark.driver.extraJavaOptions="
-                "-Divy.cache.dir=/tmp/.ivy2"
-            ),
-            "--conf",
-            "spark.jars.ivy=/tmp/.ivy2",
-            RESTORE_SCRIPT_CONTAINER,
-        ],
+        ExecutionStep(
+            operation="STAGE_FILE",
+            parameters={
+                "source_path": str(
+                    RESTORE_SCRIPT_HOST
+                ),
+                "destination_path":
+                    RESTORE_SCRIPT_CONTAINER,
+            },
+        ),
+        ExecutionStep(
+            operation="RUN_SPARK_SCRIPT",
+            parameters={
+                "script_path":
+                    RESTORE_SCRIPT_CONTAINER,
+            },
+        ),
     ]
 
 
 ACTION_REGISTRY = {
     "RESTORE_SCHEMA_DRIFT_BACKUP":
-        _schema_drift_restore_commands,
+        _schema_drift_restore_steps,
 }
 
 
@@ -139,13 +130,16 @@ def execute_recovery_action(
     execution_guard: Optional[
         Callable[[], bool]
     ] = None,
+    execution_adapter: Optional[
+        RecoveryExecutionAdapter
+    ] = None,
 ) -> dict[str, Any]:
     """
     Execute only predefined allowlisted recovery
     actions.
 
     Persist bounded log tails rather than complete
-    subprocess stdout/stderr.
+    execution stdout/stderr.
     """
 
     action = decision.get("action")
@@ -159,11 +153,11 @@ def execute_recovery_action(
             "for this recovery decision."
         )
 
-    command_factory = ACTION_REGISTRY.get(
+    step_factory = ACTION_REGISTRY.get(
         action
     )
 
-    if command_factory is None:
+    if step_factory is None:
         raise RecoveryExecutionError(
             "Recovery action is not allowlisted: "
             f"{action}"
@@ -179,7 +173,17 @@ def execute_recovery_action(
             f"not found: {RESTORE_SCRIPT_HOST}"
         )
 
-    commands = command_factory()
+    steps = step_factory()
+
+    adapter = (
+        execution_adapter
+        or DEFAULT_EXECUTION_ADAPTER
+    )
+
+    commands = [
+        adapter.preview_step(step)
+        for step in steps
+    ]
 
     if dry_run:
         return {
@@ -198,7 +202,7 @@ def execute_recovery_action(
 
     results = []
 
-    for command in commands:
+    for step, command in zip(steps, commands):
         if execution_guard is not None:
             try:
                 ownership_valid = (
@@ -243,20 +247,16 @@ def execute_recovery_action(
         step_timer = perf_counter()
 
         try:
-            completed = subprocess.run(
-                command,
-                check=True,
-                text=True,
-                capture_output=True,
-                timeout=180,
+            completed = adapter.execute_step(
+                step,
+                timeout_seconds=180,
             )
 
-        except subprocess.TimeoutExpired as exc:
+        except ExecutionAdapterTimeoutError as exc:
             stdout = _truncate_tail(
                 exc.stdout,
                 limit=MAX_ERROR_LOG_CHARS,
             )
-
             stderr = _truncate_tail(
                 exc.stderr,
                 limit=MAX_ERROR_LOG_CHARS,
@@ -267,7 +267,11 @@ def execute_recovery_action(
                 "status": "FAILED",
                 "executed": True,
                 "failure_type": "TIMEOUT",
-                "failed_command": command,
+                "failed_command": (
+                    exc.audit_descriptor
+                    if exc.audit_descriptor is not None
+                    else command
+                ),
                 "timeout_seconds": 180,
                 "completed_steps": results,
                 "logs": {
@@ -295,12 +299,11 @@ def execute_recovery_action(
                 details=failure_details,
             ) from exc
 
-        except subprocess.CalledProcessError as exc:
+        except ExecutionAdapterError as exc:
             stdout = _truncate_tail(
                 exc.stdout,
                 limit=MAX_ERROR_LOG_CHARS,
             )
-
             stderr = _truncate_tail(
                 exc.stderr,
                 limit=MAX_ERROR_LOG_CHARS,
@@ -311,7 +314,11 @@ def execute_recovery_action(
                 "status": "FAILED",
                 "executed": True,
                 "failure_type": "COMMAND_FAILED",
-                "failed_command": command,
+                "failed_command": (
+                    exc.audit_descriptor
+                    if exc.audit_descriptor is not None
+                    else command
+                ),
                 "returncode": exc.returncode,
                 "completed_steps": results,
                 "logs": {
@@ -362,7 +369,11 @@ def execute_recovery_action(
 
         results.append(
             {
-                "command": command,
+                "command": (
+                    completed.audit_descriptor
+                    if completed.audit_descriptor is not None
+                    else command
+                ),
                 "returncode":
                     completed.returncode,
                 "started_at":
