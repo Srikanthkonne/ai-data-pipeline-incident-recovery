@@ -4,8 +4,11 @@ from incident_service.recovery.adapters import (
     ExecutionStep,
     RecoveryExecutionAdapter,
 )
-from incident_service.recovery.adapters.local_docker import (
-    LocalDockerExecutionAdapter,
+from incident_service.recovery.adapters.factory import (
+    build_execution_adapter,
+)
+from incident_service.recovery.adapters.config import (
+    RecoveryStorageConfig,
 )
 
 from datetime import datetime, timezone
@@ -25,9 +28,6 @@ RESTORE_SCRIPT_CONTAINER = (
 
 MAX_CAPTURED_LOG_CHARS = 4000
 MAX_ERROR_LOG_CHARS = 2000
-
-DEFAULT_EXECUTION_ADAPTER = LocalDockerExecutionAdapter()
-
 
 class RecoveryExecutionError(RuntimeError):
     def __init__(
@@ -96,6 +96,8 @@ def _truncate_tail(
 
 
 def _schema_drift_restore_steps() -> list[ExecutionStep]:
+    storage_config = RecoveryStorageConfig.from_env()
+
     return [
         ExecutionStep(
             operation="STAGE_FILE",
@@ -112,6 +114,8 @@ def _schema_drift_restore_steps() -> list[ExecutionStep]:
             parameters={
                 "script_path":
                     RESTORE_SCRIPT_CONTAINER,
+                "environment":
+                    storage_config.environment(),
             },
         ),
     ]
@@ -177,7 +181,8 @@ def execute_recovery_action(
 
     adapter = (
         execution_adapter
-        or DEFAULT_EXECUTION_ADAPTER
+        if execution_adapter is not None
+        else build_execution_adapter()
     )
 
     commands = [
@@ -247,9 +252,18 @@ def execute_recovery_action(
         step_timer = perf_counter()
 
         try:
+            step_timeout_seconds = (
+                600
+                if (
+                    adapter.name == "emr-serverless"
+                    and step.operation == "RUN_SPARK_SCRIPT"
+                )
+                else 180
+            )
+
             completed = adapter.execute_step(
                 step,
-                timeout_seconds=180,
+                timeout_seconds=step_timeout_seconds,
             )
 
         except ExecutionAdapterTimeoutError as exc:

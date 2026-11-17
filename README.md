@@ -39,6 +39,12 @@ Phase 1 — Core Data Pipeline                         COMPLETE
 Phase 2 — Data Quality, Metadata, and Lineage        COMPLETE
 Phase 3 — Incident Detection and Recovery            COMPLETE
 Phase 3F — Production Hardening                      COMPLETE
+
+Phase 4 — Platformization & Autonomous Operations    COMPLETE
+
+Phase 5A — Execution Adapter Abstraction             COMPLETE
+
+Phase 5B — AWS EMR Serverless Cloud Execution        COMPLETE
 ```
 
 Final hardened regression:
@@ -1414,7 +1420,7 @@ Streaming incident detection
 Recovery SLO dashboards
 Chaos testing
 Kubernetes deployment
-Cloud-native AWS / GCP deployment
+GCP / additional cloud execution adapters
 ```
 
 ---
@@ -1468,9 +1474,35 @@ REPLAY PROTECTION                   COMPLETE
 STRUCTURED AUDITING                 COMPLETE
 FAILURE INJECTION                   COMPLETE
 FULL REAL END-TO-END RECOVERY       COMPLETE
+
+AUTONOMOUS INCIDENT OPERATIONS      COMPLETE
+
+RETRY / BACKOFF / REQUEUE           COMPLETE
+
+FASTAPI CONTROL PLANE               COMPLETE
+
+METRICS / DASHBOARD                 COMPLETE
+
+INTEGRATION / CHAOS TESTING         COMPLETE
+
+CI/CD / DEPLOYMENT READINESS        COMPLETE
+
+EXECUTION ADAPTER ABSTRACTION       COMPLETE
+
+AWS S3 RECOVERY STORAGE             COMPLETE
+
+AWS EMR SERVERLESS EXECUTION        COMPLETE
+
+CLOUD SCHEMA VALIDATION             COMPLETE
+
+CLOUD RUNTIME PROVENANCE            COMPLETE
+
+REAL CLOUD ORCHESTRATED RECOVERY    COMPLETE
+
+OPT-IN AWS INTEGRATION TEST         COMPLETE
 ```
 
-**PHASE 3 — COMPLETE**
+**CURRENT PLATFORM STATUS — PHASE 5B COMPLETE**
 
 ---
 
@@ -1508,10 +1540,138 @@ Detailed documentation: `docs/phase_4_platformization.md`
 - Phase 4E — Integration / Chaos Testing: COMPLETE
 - Phase 4F — CI/CD / Deployment Readiness: COMPLETE
 
-Current integration baseline: **57 passed**
+Current default regression baseline: **67 passed, 1 skipped**. The skipped test is the explicitly opt-in real AWS integration test.
 
 The API provides `/health`, `/ready`, `/metrics/summary`, `/metrics`, and `/dashboard`.
 
 The autonomous worker is isolated behind the `automation` Compose profile and defaults to `INCIDENT_WORKER_DRY_RUN=true`.
 
 Detailed Phase 4 documentation: `docs/phase_4_platformization.md`
+---
+
+# 53. Phase 5 — Cloud-Native Recovery Execution
+
+Phase 5 moves recovery execution from a local-only Docker runtime to a provider-neutral model that supports both local and managed-cloud execution without changing the deterministic recovery policy or incident lifecycle.
+
+## Phase 5A — Execution Adapter Abstraction
+
+Phase 5A introduced a provider-neutral execution contract with three semantic operations:
+
+```text
+STAGE_FILE
+RUN_SPARK_SCRIPT
+FETCH_FILE
+```
+
+Supported execution backends:
+
+```text
+local-docker
+emr-serverless
+```
+
+The default remains `local-docker`, preserving the existing Spark + MinIO development path.
+
+**PHASE 5A — COMPLETE**
+
+## Phase 5B — AWS EMR Serverless + Amazon S3
+
+Phase 5B adds a real managed-cloud recovery path using Amazon EMR Serverless, Amazon S3, IAM runtime roles, boto3, Spark, and Parquet.
+
+Supported storage backends:
+
+```text
+minio
+aws-s3
+```
+
+The same schema-drift recovery workflow can therefore run against either:
+
+```text
+Local:  Docker + Spark + MinIO
+Cloud:  EMR Serverless + Amazon S3
+```
+
+### Real Full-Cloud Recovery Proof
+
+A real schema-drift incident was executed through the complete production orchestration path:
+
+```text
+Incident ID:             302
+Incident Type:           SCHEMA_DRIFT
+Initial Status:          OPEN
+Recovery Attempt:        201
+RCA Provider:            Gemini
+Recovery Action:         RESTORE_SCHEMA_DRIFT_BACKUP
+Execution Backend:       emr-serverless
+Storage Backend:         aws-s3
+Recovery Job Run:        00gac3r7sh9vk80b
+Execution Status:        COMPLETED
+Post-Recovery Healthy:   True
+Recovery Needed:         False
+Final Schema Columns:    15
+Final Incident Status:   RESOLVED
+```
+
+The deterministic policy authorized recovery only after runtime provenance proved that the unexpected schema column came from the controlled failure-injection execution.
+
+### Automated Real-AWS Integration Test
+
+The project includes an explicitly opt-in cloud integration test:
+
+```text
+tests/integration/test_aws_cloud_recovery.py
+```
+
+It is protected by both the `aws_integration` pytest marker and the `RUN_AWS_INTEGRATION_TESTS=1` environment guard, so normal pytest execution does not launch paid AWS resources.
+
+Default regression baseline:
+
+```text
+67 passed, 1 skipped
+```
+
+Explicit AWS validation result:
+
+```text
+1 passed in 421.31s
+```
+
+The automated AWS test validates real EMR Serverless schema-drift injection, S3 provenance persistence, cloud schema capture, incident creation, runtime-provenance correlation, and fail-safe restoration of the healthy Silver dataset.
+
+After cleanup, live Silver matched the known-good backup exactly:
+
+```text
+Live Silver:     2 objects, 4622 bytes
+Healthy Backup:  2 objects, 4622 bytes
+```
+
+### Automated AWS Job Evidence
+
+```text
+incident-recovery-inject_schema_drift
+State: SUCCESS
+Execution: 111 seconds
+Billed vCPUHour: 0.049
+Billed memoryGBHour: 0.243
+
+incident-recovery-capture_silver_schema
+State: SUCCESS
+Execution: 86 seconds
+Billed vCPUHour: 0.041
+Billed memoryGBHour: 0.204
+```
+
+Combined billed compute for that integration execution:
+
+```text
+vCPUHour:      0.090
+memoryGBHour:  0.447
+storageGBHour: 0.0
+```
+
+### Production Storage Note
+
+The current S3 restore uses Hadoop filesystem rename semantics. On Amazon S3, rename is implemented as copy plus delete rather than as an atomic filesystem rename. A production-scale evolution could use versioned dataset pointers, manifest-based publication, or table formats such as Apache Iceberg, Delta Lake, or Hudi for stronger publication guarantees.
+
+**PHASE 5B — COMPLETE**

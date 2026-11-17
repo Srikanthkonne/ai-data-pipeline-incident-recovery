@@ -1,6 +1,8 @@
 import json
+
 from pathlib import Path
 from typing import Any, Optional
+from uuid import uuid4
 
 from incident_service.recovery.adapters import (
     ExecutionAdapterError,
@@ -8,26 +10,27 @@ from incident_service.recovery.adapters import (
     ExecutionStep,
     RecoveryExecutionAdapter,
 )
-from incident_service.recovery.adapters.local_docker import (
-    LocalDockerExecutionAdapter,
+from incident_service.recovery.adapters.config import (
+    RecoveryStorageConfig,
 )
-
+from incident_service.recovery.adapters.factory import (
+    build_execution_adapter,
+)
 from incident_service.rules.schema_drift import (
     compare_schema,
 )
 
 
-CAPTURE_SCRIPT = (
-    "/opt/spark/work-dir/jobs/"
-    "capture_silver_schema.py"
+CAPTURE_SCRIPT_HOST = Path(
+    "spark/jobs/capture_silver_schema.py"
+)
+
+CAPTURE_SCRIPT_RUNTIME = (
+    "/tmp/capture_silver_schema.py"
 )
 
 EVIDENCE_PATH = Path(
     "spark/evidence/silver_schema.json"
-)
-
-DEFAULT_VALIDATION_ADAPTER = (
-    LocalDockerExecutionAdapter()
 )
 
 
@@ -35,50 +38,163 @@ class RecoveryValidationError(RuntimeError):
     pass
 
 
+def _validate_backend_pair(
+    adapter: RecoveryExecutionAdapter,
+    storage_config: RecoveryStorageConfig,
+) -> None:
+    if (
+        adapter.name == "emr-serverless"
+        and storage_config.backend != "aws-s3"
+    ):
+        raise RecoveryValidationError(
+            "EMR Serverless validation requires "
+            "RECOVERY_STORAGE_BACKEND=aws-s3."
+        )
+
+    if (
+        adapter.name == "local-docker"
+        and storage_config.backend != "minio"
+    ):
+        raise RecoveryValidationError(
+            "Local Docker validation requires "
+            "RECOVERY_STORAGE_BACKEND=minio."
+        )
+
+
 def validate_schema_drift_recovery(
     *,
     execution_adapter: Optional[
         RecoveryExecutionAdapter
     ] = None,
+    storage_config: Optional[
+        RecoveryStorageConfig
+    ] = None,
 ) -> dict[str, Any]:
     """
-    Capture the current Silver dataset state and
-    determine whether schema recovery is needed.
+    Capture the current Silver schema through the
+    configured execution/storage backends and compare
+    it with the expected schema contract.
 
-    This function is safe to use both before and
-    after recovery execution.
-
-    Capture infrastructure failures raise
-    RecoveryValidationError instead of being
-    interpreted as a recoverable schema problem.
+    The same function is used before and after recovery.
     """
 
     adapter = (
         execution_adapter
-        or DEFAULT_VALIDATION_ADAPTER
+        if execution_adapter is not None
+        else build_execution_adapter()
     )
 
-    step = ExecutionStep(
+    storage = (
+        storage_config
+        if storage_config is not None
+        else RecoveryStorageConfig.from_env()
+    )
+
+    _validate_backend_pair(
+        adapter,
+        storage,
+    )
+
+    if not CAPTURE_SCRIPT_HOST.is_file():
+        raise RecoveryValidationError(
+            "Schema capture script was not found: "
+            f"{CAPTURE_SCRIPT_HOST}"
+        )
+
+    # Never allow an old local evidence file to satisfy
+    # a failed or incomplete new validation attempt.
+    if EVIDENCE_PATH.exists():
+        EVIDENCE_PATH.unlink()
+
+    evidence_source_path = (
+        storage.schema_evidence_path
+    )
+
+    if storage.backend == "aws-s3":
+        configured_path = (
+            storage.schema_evidence_path
+            .rstrip("/")
+        )
+
+        if configured_path.endswith(".json"):
+            evidence_prefix = (
+                configured_path.rsplit(
+                    "/",
+                    1,
+                )[0]
+            )
+        else:
+            evidence_prefix = configured_path
+
+        evidence_source_path = (
+            f"{evidence_prefix}/"
+            f"silver_schema_{uuid4().hex}.json"
+        )
+
+    environment = storage.environment(
+        evidence_path=evidence_source_path,
+    )
+
+    stage_step = ExecutionStep(
+        operation="STAGE_FILE",
+        parameters={
+            "source_path":
+                str(CAPTURE_SCRIPT_HOST),
+            "destination_path":
+                CAPTURE_SCRIPT_RUNTIME,
+        },
+    )
+
+    capture_step = ExecutionStep(
         operation="RUN_SPARK_SCRIPT",
         parameters={
-            "script_path": CAPTURE_SCRIPT,
+            "script_path":
+                CAPTURE_SCRIPT_RUNTIME,
+            "environment":
+                environment,
+        },
+    )
+
+    fetch_step = ExecutionStep(
+        operation="FETCH_FILE",
+        parameters={
+            "source_path":
+                evidence_source_path,
+            "destination_path":
+                str(EVIDENCE_PATH),
         },
     )
 
     try:
+        adapter.execute_step(
+            stage_step,
+            timeout_seconds=180,
+        )
+
+        validation_timeout_seconds = (
+            600
+            if adapter.name == "emr-serverless"
+            else 180
+        )
+
         completed = adapter.execute_step(
-            step,
+            capture_step,
+            timeout_seconds=validation_timeout_seconds,
+        )
+
+        adapter.execute_step(
+            fetch_step,
             timeout_seconds=180,
         )
 
     except ExecutionAdapterTimeoutError as exc:
         raise RecoveryValidationError(
-            "Schema validation timed out."
+            "Schema validation execution timed out."
         ) from exc
 
     except ExecutionAdapterError as exc:
         raise RecoveryValidationError(
-            "Schema validation command failed."
+            "Schema validation execution failed."
         ) from exc
 
     if not EVIDENCE_PATH.exists():
@@ -87,9 +203,21 @@ def validate_schema_drift_recovery(
             f"not found: {EVIDENCE_PATH}"
         )
 
-    evidence = json.loads(
-        EVIDENCE_PATH.read_text()
-    )
+    try:
+        evidence = json.loads(
+            EVIDENCE_PATH.read_text(
+                encoding="utf-8"
+            )
+        )
+
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise RecoveryValidationError(
+            "Silver schema evidence could not "
+            "be read."
+        ) from exc
 
     dataset_exists = evidence.get(
         "dataset_exists"
@@ -139,6 +267,10 @@ def validate_schema_drift_recovery(
                 ),
             "validation_command_returncode":
                 completed.returncode,
+            "execution_backend":
+                adapter.name,
+            "storage_backend":
+                storage.backend,
         }
 
     if capture_status != "CAPTURED":
@@ -151,9 +283,7 @@ def validate_schema_drift_recovery(
         observed_schema
     )
 
-    healthy = (
-        len(detections) == 0
-    )
+    healthy = len(detections) == 0
 
     return {
         "validation_type":
@@ -180,4 +310,8 @@ def validate_schema_drift_recovery(
             ),
         "validation_command_returncode":
             completed.returncode,
+        "execution_backend":
+            adapter.name,
+        "storage_backend":
+            storage.backend,
     }

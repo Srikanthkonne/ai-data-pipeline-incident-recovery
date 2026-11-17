@@ -1,4 +1,6 @@
 import subprocess
+
+from pathlib import Path
 from typing import Any
 
 from incident_service.recovery.adapters.base import (
@@ -98,9 +100,29 @@ class LocalDockerExecutionAdapter:
             command = [
                 "docker",
                 "exec",
-                self.spark_container,
-                self.spark_submit,
             ]
+
+            environment = step.parameters.get(
+                "environment",
+                {},
+            )
+
+            for key, value in sorted(
+                environment.items()
+            ):
+                command.extend(
+                    [
+                        "-e",
+                        f"{key}={value}",
+                    ]
+                )
+
+            command.extend(
+                [
+                    self.spark_container,
+                    self.spark_submit,
+                ]
+            )
 
             if packages:
                 command.extend(
@@ -124,6 +146,25 @@ class LocalDockerExecutionAdapter:
 
             return command
 
+        if step.operation == "FETCH_FILE":
+            source_path = step.parameters[
+                "source_path"
+            ]
+
+            destination_path = step.parameters[
+                "destination_path"
+            ]
+
+            return [
+                "docker",
+                "cp",
+                (
+                    f"{self.spark_container}:"
+                    f"{source_path}"
+                ),
+                str(destination_path),
+            ]
+
         raise ExecutionAdapterError(
             "Unsupported local Docker execution "
             f"operation: {step.operation}",
@@ -146,6 +187,20 @@ class LocalDockerExecutionAdapter:
         timeout_seconds: int,
     ) -> ExecutionStepResult:
         command = self._build_command(step)
+
+        if step.operation == "FETCH_FILE":
+            destination_path = Path(
+                str(
+                    step.parameters[
+                        "destination_path"
+                    ]
+                )
+            )
+
+            destination_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
 
         try:
             completed = subprocess.run(

@@ -8,3 +8,4 @@ httpx2==2.16.0
 prometheus-client==0.26.0
 pytest==9.2.0
 python-dotenv==1.2.3
+boto3[crt]==1.44.3

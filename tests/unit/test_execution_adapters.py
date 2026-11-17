@@ -9,6 +9,15 @@ from incident_service.recovery.adapters import (
 from incident_service.recovery.adapters.local_docker import (
     LocalDockerExecutionAdapter,
 )
+from incident_service.recovery.adapters.config import (
+    RecoveryExecutionConfig,
+)
+from incident_service.recovery.adapters.emr_serverless import (
+    EMRServerlessExecutionAdapter,
+)
+from incident_service.recovery.adapters.factory import (
+    build_execution_adapter,
+)
 from incident_service.recovery.executor import (
     RecoveryExecutionError,
     execute_recovery_action,
@@ -185,3 +194,255 @@ def test_timeout_error_preserves_existing_contract():
     assert details["failed_command"] == {
         "provider": "fake-cloud",
     }
+
+
+def test_execution_adapter_factory_defaults_to_local_docker(
+    monkeypatch,
+):
+    monkeypatch.delenv(
+        "RECOVERY_EXECUTION_BACKEND",
+        raising=False,
+    )
+
+    adapter = build_execution_adapter()
+
+    assert isinstance(
+        adapter,
+        LocalDockerExecutionAdapter,
+    )
+    assert adapter.name == "local-docker"
+
+
+def test_emr_serverless_factory_is_lazy_for_preview():
+    config = RecoveryExecutionConfig(
+        backend="emr-serverless",
+        aws_region="us-east-1",
+        emr_serverless_application_id="00example",
+        emr_serverless_execution_role_arn=(
+            "arn:aws:iam::123456789012:"
+            "role/example-emr-role"
+        ),
+        emr_serverless_artifact_bucket=(
+            "example-recovery-bucket"
+        ),
+        emr_serverless_artifact_prefix=(
+            "incident-recovery"
+        ),
+    )
+
+    adapter = build_execution_adapter(config)
+
+    assert isinstance(
+        adapter,
+        EMRServerlessExecutionAdapter,
+    )
+
+    assert adapter._s3_client is None
+    assert adapter._emr_client is None
+
+    preview = adapter.preview_step(
+        ExecutionStep(
+            operation="RUN_SPARK_SCRIPT",
+            parameters={
+                "script_path":
+                    "/tmp/restore_schema_drift.py",
+            },
+        )
+    )
+
+    assert preview["entry_point"] == (
+        "s3://example-recovery-bucket/"
+        "incident-recovery/scripts/"
+        "restore_schema_drift.py"
+    )
+
+    assert adapter._s3_client is None
+    assert adapter._emr_client is None
+
+
+def test_emr_serverless_stages_artifact_to_s3(
+    tmp_path,
+):
+    class FakeS3Client:
+        def __init__(self):
+            self.upload = None
+
+        def upload_file(
+            self,
+            source,
+            bucket,
+            key,
+        ):
+            self.upload = {
+                "source": source,
+                "bucket": bucket,
+                "key": key,
+            }
+
+    class FakeEMRClient:
+        pass
+
+    source = (
+        tmp_path
+        / "restore_schema_drift.py"
+    )
+
+    source.write_text(
+        "print('recovery')\n"
+    )
+
+    s3_client = FakeS3Client()
+
+    adapter = EMRServerlessExecutionAdapter(
+        application_id="00example",
+        execution_role_arn=(
+            "arn:aws:iam::123456789012:"
+            "role/example-emr-role"
+        ),
+        artifact_bucket=(
+            "example-recovery-bucket"
+        ),
+        s3_client=s3_client,
+        emr_client=FakeEMRClient(),
+    )
+
+    result = adapter.execute_step(
+        ExecutionStep(
+            operation="STAGE_FILE",
+            parameters={
+                "source_path": str(source),
+                "destination_path":
+                    "/tmp/restore_schema_drift.py",
+            },
+        ),
+        timeout_seconds=180,
+    )
+
+    assert result.returncode == 0
+
+    assert s3_client.upload == {
+        "source": str(source),
+        "bucket":
+            "example-recovery-bucket",
+        "key": (
+            "incident-recovery/scripts/"
+            "restore_schema_drift.py"
+        ),
+    }
+
+
+def test_emr_serverless_submits_and_completes_job():
+    class FakeS3Client:
+        pass
+
+    class FakeEMRClient:
+        def __init__(self):
+            self.start_request = None
+            self.get_request = None
+
+        def start_job_run(self, **kwargs):
+            self.start_request = kwargs
+
+            return {
+                "jobRunId": "jr-example",
+            }
+
+        def get_job_run(
+            self,
+            *,
+            applicationId,
+            jobRunId,
+        ):
+            self.get_request = {
+                "applicationId":
+                    applicationId,
+                "jobRunId":
+                    jobRunId,
+            }
+
+            return {
+                "jobRun": {
+                    "state": "SUCCESS",
+                    "stateDetails": "",
+                }
+            }
+
+    emr_client = FakeEMRClient()
+
+    adapter = EMRServerlessExecutionAdapter(
+        application_id="00example",
+        execution_role_arn=(
+            "arn:aws:iam::123456789012:"
+            "role/example-emr-role"
+        ),
+        artifact_bucket=(
+            "example-recovery-bucket"
+        ),
+        s3_client=FakeS3Client(),
+        emr_client=emr_client,
+    )
+
+    result = adapter.execute_step(
+        ExecutionStep(
+            operation="RUN_SPARK_SCRIPT",
+            parameters={
+                "script_path":
+                    "/tmp/restore_schema_drift.py",
+            },
+        ),
+        timeout_seconds=180,
+    )
+
+    assert result.returncode == 0
+
+    assert (
+        emr_client.start_request[
+            "applicationId"
+        ]
+        == "00example"
+    )
+
+    assert (
+        emr_client.start_request[
+            "executionRoleArn"
+        ]
+        == (
+            "arn:aws:iam::123456789012:"
+            "role/example-emr-role"
+        )
+    )
+
+    assert (
+        emr_client.start_request[
+            "jobDriver"
+        ]["sparkSubmit"]["entryPoint"]
+        == (
+            "s3://example-recovery-bucket/"
+            "incident-recovery/scripts/"
+            "restore_schema_drift.py"
+        )
+    )
+
+    assert (
+        emr_client.start_request[
+            "configurationOverrides"
+        ]["monitoringConfiguration"][
+            "s3MonitoringConfiguration"
+        ]["logUri"]
+        == (
+            "s3://example-recovery-bucket/"
+            "incident-recovery/logs/"
+        )
+    )
+
+    assert emr_client.get_request == {
+        "applicationId": "00example",
+        "jobRunId": "jr-example",
+    }
+
+    assert (
+        result.audit_descriptor[
+            "job_run_id"
+        ]
+        == "jr-example"
+    )
