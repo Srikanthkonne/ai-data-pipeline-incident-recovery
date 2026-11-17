@@ -51,3 +51,13 @@ dbt/**/dbt_packages/
 
 # Generated Spark evidence
 spark/evidence/
+
+# Terraform local provider/cache files
+**/.terraform/*
+
+# Terraform state and local plans
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log

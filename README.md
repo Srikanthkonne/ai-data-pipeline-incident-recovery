@@ -217,6 +217,14 @@ gemini-3.5-flash-lite
 ```text
 Docker
 Docker Compose
+
+Terraform
+
+Amazon S3
+
+Amazon EMR Serverless
+
+AWS IAM
 ```
 
 ---
@@ -1675,3 +1683,77 @@ storageGBHour: 0.0
 The current S3 restore uses Hadoop filesystem rename semantics. On Amazon S3, rename is implemented as copy plus delete rather than as an atomic filesystem rename. A production-scale evolution could use versioned dataset pointers, manifest-based publication, or table formats such as Apache Iceberg, Delta Lake, or Hudi for stronger publication guarantees.
 
 **PHASE 5B — COMPLETE**
+
+## Phase 5C — AWS Infrastructure as Code with Terraform
+
+Phase 5C codifies the AWS recovery infrastructure in Terraform so the managed-cloud recovery path is reproducible, reviewable, and protected from configuration drift.
+
+Terraform now manages the existing Phase 5B infrastructure:
+
+```text
+Amazon S3 recovery bucket
+S3 versioning configuration
+S3 server-side encryption
+S3 public access block
+Amazon EMR Serverless application
+EMR Serverless IAM runtime role
+Runtime-role S3 access policy
+```
+
+The existing AWS resources were imported into Terraform rather than recreated.
+
+Final infrastructure convergence:
+
+```text
+No changes. Your infrastructure matches the configuration.
+```
+
+Safety and reproducibility controls include:
+
+```text
+prevent_destroy on the recovery S3 bucket
+prevent_destroy on the EMR Serverless application
+prevent_destroy on the EMR runtime IAM role
+Terraform state excluded from Git
+Terraform provider lockfile retained
+Dedicated Terraform provisioning role
+```
+
+The IAM trust policy derives the AWS account ID through `aws_caller_identity` instead of hard-coding it.
+
+Terraform also exposes the non-secret runtime configuration required by the recovery service:
+
+```text
+AWS_REGION
+RECOVERY_EXECUTION_BACKEND
+RECOVERY_STORAGE_BACKEND
+EMR_SERVERLESS_APPLICATION_ID
+EMR_SERVERLESS_EXECUTION_ROLE_ARN
+EMR_SERVERLESS_ARTIFACT_BUCKET
+EMR_SERVERLESS_ARTIFACT_PREFIX
+```
+
+The helper:
+
+```text
+infrastructure/terraform/aws/render_env.py
+```
+
+converts those Terraform outputs into `.env`-style configuration without storing AWS credentials or application secrets.
+
+Terraform source layout:
+
+```text
+infrastructure/terraform/aws/
+├── versions.tf
+├── main.tf
+├── variables.tf
+├── s3.tf
+├── emr.tf
+├── iam.tf
+├── outputs.tf
+├── render_env.py
+└── .terraform.lock.hcl
+```
+
+**PHASE 5C — AWS INFRASTRUCTURE AS CODE IMPLEMENTED**
