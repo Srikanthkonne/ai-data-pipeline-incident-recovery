@@ -1745,19 +1745,70 @@ converts those Terraform outputs into `.env`-style configuration without storing
 
 Terraform state is stored remotely in the dedicated backend bucket `incident-recovery-tfstate-275956876816-us-east-1` under `phase5c/terraform.tfstate`. The backend bucket has versioning enabled, AES256 server-side encryption, all four S3 public-access protections enabled, and native S3 state locking via `use_lockfile = true`. The backend bucket is bootstrapped separately so Terraform can use it before managing the application infrastructure.
 
+### Bootstrap and IAM Cleanup
+
+The bootstrap layer is codified separately under `infrastructure/terraform/bootstrap/` so the application Terraform stack does not manage the IAM role it depends on for provisioning.
+
+The bootstrap stack manages:
+
+```text
+IncidentRecoveryBootstrap IAM user
+AssumeIncidentRecoveryProvisioner inline policy
+SignInLocalDevelopmentAccess managed-policy attachment
+IncidentRecoveryProvisioner IAM role
+IncidentRecoveryProvisionerPolicy
+Terraform-state S3 bucket
+State-bucket versioning
+State-bucket encryption
+State-bucket public-access block
+```
+
+Normal infrastructure operations use:
+
+```text
+IncidentRecoveryBootstrap
+        ↓ sts:AssumeRole
+IncidentRecoveryProvisioner
+        ↓
+Application Terraform / AWS infrastructure
+```
+
+The bootstrap stack itself is break-glass/admin-only because it manages the bootstrap identity and provisioner role. Root credentials are not required for normal application Terraform operations.
+
+Bootstrap state is stored separately in the same protected S3 backend under:
+
+```text
+bootstrap/terraform.tfstate
+```
+
+Both the application stack and bootstrap stack were validated at zero drift after migration to remote state.
+
 Terraform source layout:
 
 ```text
-infrastructure/terraform/aws/
-├── versions.tf
-├── main.tf
-├── variables.tf
-├── s3.tf
-├── emr.tf
-├── iam.tf
-├── outputs.tf
-├── render_env.py
-└── .terraform.lock.hcl
+
+infrastructure/terraform/
+├── aws/
+│   ├── versions.tf
+│   ├── backend.tf
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── s3.tf
+│   ├── emr.tf
+│   ├── iam.tf
+│   ├── outputs.tf
+│   ├── render_env.py
+│   └── .terraform.lock.hcl
+└── bootstrap/
+    ├── versions.tf
+    ├── backend.tf
+    ├── main.tf
+    ├── variables.tf
+    ├── iam.tf
+    ├── provisioner_policy.tf
+    ├── state_bucket.tf
+    └── .terraform.lock.hcl
+
 ```
 
 **PHASE 5C — AWS INFRASTRUCTURE AS CODE IMPLEMENTED**
