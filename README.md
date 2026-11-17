@@ -1714,6 +1714,8 @@ Safety and reproducibility controls include:
 prevent_destroy on the recovery S3 bucket
 prevent_destroy on the EMR Serverless application
 prevent_destroy on the EMR runtime IAM role
+Terraform state stored in a dedicated versioned S3 backend
+Native S3 lockfile locking enabled with use_lockfile = true
 Terraform state excluded from Git
 Terraform provider lockfile retained
 Dedicated Terraform provisioning role
@@ -1740,6 +1742,8 @@ infrastructure/terraform/aws/render_env.py
 ```
 
 converts those Terraform outputs into `.env`-style configuration without storing AWS credentials or application secrets.
+
+Terraform state is stored remotely in the dedicated backend bucket `incident-recovery-tfstate-275956876816-us-east-1` under `phase5c/terraform.tfstate`. The backend bucket has versioning enabled, AES256 server-side encryption, all four S3 public-access protections enabled, and native S3 state locking via `use_lockfile = true`. The backend bucket is bootstrapped separately so Terraform can use it before managing the application infrastructure.
 
 Terraform source layout:
 
