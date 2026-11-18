@@ -33,3 +33,21 @@ variable "terraform_state_bucket_name" {
   type        = string
   default     = "incident-recovery-tfstate-275956876816-us-east-1"
 }
+
+variable "ecs_execution_role_name" {
+  description = "ECS task execution IAM role managed by the application Terraform stack."
+  type        = string
+  default     = "IncidentRecoveryECSExecutionRole"
+}
+
+variable "api_task_role_name" {
+  description = "ECS task IAM role used by the incident recovery API."
+  type        = string
+  default     = "IncidentRecoveryAPITaskRole"
+}
+
+variable "worker_task_role_name" {
+  description = "ECS task IAM role used by the autonomous recovery worker."
+  type        = string
+  default     = "IncidentRecoveryWorkerTaskRole"
+}

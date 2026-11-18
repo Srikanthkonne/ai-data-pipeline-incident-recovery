@@ -45,3 +45,28 @@ variable "terraform_execution_role_arn" {
   type        = string
   default     = "arn:aws:iam::275956876816:role/IncidentRecoveryProvisioner"
 }
+
+
+variable "container_image_tag" {
+  description = "Container image tag deployed to ECS."
+  type        = string
+  default     = "latest"
+}
+
+variable "api_desired_count" {
+  description = "Desired number of API ECS tasks."
+  type        = number
+  default     = 1
+}
+
+variable "worker_desired_count" {
+  description = "Desired number of autonomous recovery worker ECS tasks."
+  type        = number
+  default     = 1
+}
+
+variable "api_allowed_cidr" {
+  description = "IPv4 CIDR allowed to reach the public API load balancer."
+  type        = string
+  default     = "127.0.0.1/32"
+}

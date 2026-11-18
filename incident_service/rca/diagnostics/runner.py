@@ -31,6 +31,14 @@ def collect_diagnostic_evidence(
 
     if incident_type == "SCHEMA_DRIFT":
 
+        # Runtime provenance is durable cloud evidence and
+        # must not depend on local Bronze schema artifacts.
+        diagnostics.append(
+            diagnose_runtime_provenance(
+                incident_id=incident_id
+            )
+        )
+
         if not BRONZE_SCHEMA_EVIDENCE.exists():
             diagnostics.append(
                 {
@@ -70,10 +78,5 @@ def collect_diagnostic_evidence(
                     )
                 )
 
-        diagnostics.append(
-            diagnose_runtime_provenance(
-                incident_id=incident_id
-            )
-        )
 
     return diagnostics

@@ -78,9 +78,11 @@ resource "aws_iam_role_policy" "provisioner" {
         Effect = "Allow"
 
         Action = [
+          "iam:AttachRolePolicy",
           "iam:CreateRole",
           "iam:DeleteRole",
           "iam:DeleteRolePolicy",
+          "iam:DetachRolePolicy",
           "iam:GetRole",
           "iam:GetRolePolicy",
           "iam:ListAttachedRolePolicies",
@@ -95,7 +97,12 @@ resource "aws_iam_role_policy" "provisioner" {
           "iam:UpdateRoleDescription",
         ]
 
-        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.runtime_role_name}"
+        Resource = [
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.runtime_role_name}",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.ecs_execution_role_name}",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.api_task_role_name}",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.worker_task_role_name}",
+        ]
       },
       {
         Sid      = "EMRServiceLinkedRole"
@@ -106,6 +113,212 @@ resource "aws_iam_role_policy" "provisioner" {
         Condition = {
           StringEquals = {
             "iam:AWSServiceName" = "ops.emr-serverless.amazonaws.com"
+          }
+        }
+      },
+      {
+        Sid    = "PlatformNetworking"
+        Effect = "Allow"
+
+        Action = [
+          "ec2:AssociateRouteTable",
+          "ec2:AttachInternetGateway",
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:CreateInternetGateway",
+          "ec2:CreateRoute",
+          "ec2:CreateRouteTable",
+          "ec2:CreateSecurityGroup",
+          "ec2:CreateSubnet",
+          "ec2:CreateTags",
+          "ec2:CreateVpc",
+          "ec2:DeleteInternetGateway",
+          "ec2:DeleteRoute",
+          "ec2:DeleteRouteTable",
+          "ec2:DeleteSecurityGroup",
+          "ec2:DeleteSubnet",
+          "ec2:DeleteTags",
+          "ec2:DeleteVpc",
+          "ec2:Describe*",
+          "ec2:GetSecurityGroupsForVpc",
+          "ec2:DetachInternetGateway",
+          "ec2:DisassociateRouteTable",
+          "ec2:ModifySubnetAttribute",
+          "ec2:ModifyVpcAttribute",
+          "ec2:ReplaceRoute",
+          "ec2:ReplaceRouteTableAssociation",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid    = "ContainerRegistry"
+        Effect = "Allow"
+
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
+          "ecr:CompleteLayerUpload",
+          "ecr:CreateRepository",
+          "ecr:DeleteRepository",
+          "ecr:DescribeImages",
+          "ecr:DescribeRepositories",
+          "ecr:GetAuthorizationToken",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:GetLifecyclePolicy",
+          "ecr:GetRepositoryPolicy",
+          "ecr:InitiateLayerUpload",
+          "ecr:ListImages",
+          "ecr:ListTagsForResource",
+          "ecr:PutImage",
+          "ecr:PutImageScanningConfiguration",
+          "ecr:PutImageTagMutability",
+          "ecr:TagResource",
+          "ecr:UntagResource",
+          "ecr:UploadLayerPart",
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid    = "ECSPlatform"
+        Effect = "Allow"
+
+        Action = [
+          "ecs:CreateCluster",
+          "ecs:CreateService",
+          "ecs:DeleteCluster",
+          "ecs:DeleteService",
+          "ecs:DeregisterTaskDefinition",
+          "ecs:DescribeClusters",
+          "ecs:DescribeServices",
+          "ecs:DescribeTaskDefinition",
+          "ecs:ListServices",
+          "ecs:ListTagsForResource",
+          "ecs:ListTaskDefinitions",
+          "ecs:ListTasks",
+          "ecs:DescribeTasks",
+          "ecs:RegisterTaskDefinition",
+          "ecs:RunTask",
+          "ecs:StopTask",
+          "ecs:TagResource",
+          "ecs:UntagResource",
+          "ecs:UpdateService",
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid    = "RDSAndSecretsKMS"
+        Effect = "Allow"
+
+        Action = [
+          "kms:CreateGrant",
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:Encrypt",
+          "kms:GenerateDataKey",
+          "kms:ReEncryptFrom",
+          "kms:ReEncryptTo",
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid    = "RDSPlatform"
+        Effect = "Allow"
+
+        Action = [
+          "rds:AddTagsToResource",
+          "rds:CreateDBInstance",
+          "rds:CreateDBSubnetGroup",
+          "rds:DeleteDBInstance",
+          "rds:DeleteDBSubnetGroup",
+          "rds:Describe*",
+          "rds:ListTagsForResource",
+          "rds:ModifyDBInstance",
+          "rds:ModifyDBSubnetGroup",
+          "rds:RemoveTagsFromResource",
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid    = "LoadBalancing"
+        Effect = "Allow"
+
+        Action = [
+          "elasticloadbalancing:AddTags",
+          "elasticloadbalancing:CreateListener",
+          "elasticloadbalancing:CreateLoadBalancer",
+          "elasticloadbalancing:CreateTargetGroup",
+          "elasticloadbalancing:DeleteListener",
+          "elasticloadbalancing:DeleteLoadBalancer",
+          "elasticloadbalancing:DeleteTargetGroup",
+          "elasticloadbalancing:Describe*",
+          "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:ModifyLoadBalancerAttributes",
+          "elasticloadbalancing:ModifyTargetGroup",
+          "elasticloadbalancing:ModifyTargetGroupAttributes",
+          "elasticloadbalancing:RemoveTags",
+          "elasticloadbalancing:SetIpAddressType",
+          "elasticloadbalancing:SetSecurityGroups",
+          "elasticloadbalancing:SetSubnets",
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid    = "ApplicationSecrets"
+        Effect = "Allow"
+
+        Action = [
+          "secretsmanager:CreateSecret",
+          "secretsmanager:DeleteSecret",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetResourcePolicy",
+          "secretsmanager:ListSecretVersionIds",
+          "secretsmanager:ListSecrets",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:RestoreSecret",
+          "secretsmanager:TagResource",
+          "secretsmanager:UntagResource",
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudWatchLogs"
+        Effect = "Allow"
+
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:DeleteLogGroup",
+          "logs:DeleteRetentionPolicy",
+          "logs:DescribeLogGroups",
+          "logs:ListTagsForResource",
+          "logs:PutRetentionPolicy",
+          "logs:TagResource",
+          "logs:UntagResource",
+        ]
+
+        Resource = "*"
+      },
+      {
+        Sid      = "PlatformServiceLinkedRoles"
+        Effect   = "Allow"
+        Action   = "iam:CreateServiceLinkedRole"
+        Resource = "*"
+
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = [
+              "ecs.amazonaws.com",
+              "rds.amazonaws.com",
+              "elasticloadbalancing.amazonaws.com",
+            ]
           }
         }
       },

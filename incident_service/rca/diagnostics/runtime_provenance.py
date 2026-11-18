@@ -1,7 +1,15 @@
 import json
+
+import boto3
+
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+)
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from incident_service.repository import (
     get_incident,
@@ -22,6 +30,87 @@ def _parse_timestamp(value: str) -> datetime:
             "+00:00",
         )
     )
+
+
+def _load_provenance_records(
+    metadata: dict[str, Any],
+) -> list[tuple[str, dict[str, Any]]]:
+    """
+    Load durable runtime provenance from S3 when
+    runtime_provenance_uri is present in incident
+    metadata.
+
+    Existing local provenance files remain supported.
+    """
+    records: list[
+        tuple[str, dict[str, Any]]
+    ] = []
+
+    provenance_uri = metadata.get(
+        "runtime_provenance_uri"
+    )
+
+    if (
+        isinstance(provenance_uri, str)
+        and provenance_uri.startswith("s3://")
+    ):
+        parsed = urlparse(provenance_uri)
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+
+        if bucket and key:
+            try:
+                response = boto3.client(
+                    "s3"
+                ).get_object(
+                    Bucket=bucket,
+                    Key=key,
+                )
+
+                record = json.loads(
+                    response["Body"]
+                    .read()
+                    .decode("utf-8")
+                )
+
+            except (
+                BotoCoreError,
+                ClientError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+            ):
+                pass
+
+            else:
+                records.append(
+                    (
+                        provenance_uri,
+                        record,
+                    )
+                )
+
+    for path in PROVENANCE_DIR.glob(
+        "schema_drift_*.json"
+    ):
+        try:
+            record = json.loads(
+                path.read_text()
+            )
+
+        except (
+            OSError,
+            json.JSONDecodeError,
+        ):
+            continue
+
+        records.append(
+            (
+                str(path),
+                record,
+            )
+        )
+
+    return records
 
 
 def diagnose_runtime_provenance(
@@ -88,18 +177,9 @@ def diagnose_runtime_provenance(
 
     matches = []
 
-    for path in PROVENANCE_DIR.glob(
-        "schema_drift_*.json"
+    for provenance_path, record in (
+        _load_provenance_records(metadata)
     ):
-        try:
-            record = json.loads(
-                path.read_text()
-            )
-        except (
-            OSError,
-            json.JSONDecodeError,
-        ):
-            continue
 
         if record.get("scenario") != "SCHEMA_DRIFT":
             continue
@@ -161,7 +241,7 @@ def diagnose_runtime_provenance(
 
         matches.append(
             {
-                "path": str(path),
+                "path": provenance_path,
                 "record": record,
                 "age_seconds": age_seconds,
             }
