@@ -58,9 +58,8 @@ Phase 5E — Terraform CI/CD Checks                    COMPLETE
 
 Phase 5F — AWS Observability Hardening               COMPLETE
 
-Phase 5G — Final Architecture / Documentation        IN PROGRESS
+Phase 5G — Final Architecture / Documentation        COMPLETE
 
-Phase 5H — Portfolio / Demo Packaging                PENDING
 
 ```
 
@@ -2035,8 +2034,4 @@ Detailed Phase 5 documentation:
 docs/phase_5_cloud_deployment.md
 ```
 
-**PHASE 5G — IN PROGRESS**
-
-## Phase 5H — Portfolio / Demo Packaging
-
-**PHASE 5H — PENDING**
+**PHASE 5G — COMPLETE**
