@@ -35,28 +35,63 @@ Incident Resolution
 ## Project Status
 
 ```text
+
 Phase 1 — Core Data Pipeline                         COMPLETE
+
 Phase 2 — Data Quality, Metadata, and Lineage        COMPLETE
+
 Phase 3 — Incident Detection and Recovery            COMPLETE
+
 Phase 3F — Production Hardening                      COMPLETE
 
 Phase 4 — Platformization & Autonomous Operations    COMPLETE
 
 Phase 5A — Execution Adapter Abstraction             COMPLETE
 
-Phase 5B — AWS EMR Serverless Cloud Execution        COMPLETE
+Phase 5B — AWS Cloud Recovery Execution              COMPLETE
+
+Phase 5C — AWS Infrastructure as Code                COMPLETE
+
+Phase 5D — Cloud Control Plane Deployment            COMPLETE
+
+Phase 5E — Terraform CI/CD Checks                    COMPLETE
+
+Phase 5F — AWS Observability Hardening               COMPLETE
+
+Phase 5G — Final Architecture / Documentation        IN PROGRESS
+
+Phase 5H — Portfolio / Demo Packaging                PENDING
+
 ```
 
-Final hardened regression:
+Final autonomous AWS recovery proof:
 
 ```text
-Incident ID:        8
-Incident Type:      SCHEMA_DRIFT
-Recovery Attempt:   25
-Recovery Status:    COMPLETED
-Incident Status:    RESOLVED
-Final Silver Schema: 15 columns
-Active Workers:     0
+
+Incident ID:                 1
+
+Incident Type:               SCHEMA_DRIFT
+
+Recovery Attempt:            4
+
+Recovery Action:             RESTORE_SCHEMA_DRIFT_BACKUP
+
+Execution Backend:           emr-serverless
+
+Storage Backend:             aws-s3
+
+Recovery Status:             COMPLETED
+
+Post-Validation Healthy:     true
+
+Recovery Needed:             false
+
+Final Schema Columns:        15
+
+Remaining Detections:        none
+
+Final Incident Status:       RESOLVED
+
 ```
 
 ---
@@ -215,16 +250,35 @@ gemini-3.5-flash-lite
 ## Infrastructure
 
 ```text
+
 Docker
+
 Docker Compose
 
 Terraform
+
+Amazon VPC
+
+Application Load Balancer
+
+Amazon ECS / AWS Fargate
+
+Amazon ECR
+
+Amazon RDS PostgreSQL
 
 Amazon S3
 
 Amazon EMR Serverless
 
 AWS IAM
+
+AWS Secrets Manager
+
+Amazon CloudWatch Logs
+
+CloudWatch log metric filters
+
 ```
 
 ---
@@ -1156,6 +1210,17 @@ Real implementation issues, diagnostics, fixes, and operational guidance.
 
 ---
 
+
+```text
+
+docs/phase_5_cloud_deployment.md
+
+```
+
+Final AWS architecture, cloud control plane, Terraform/IAM model, autonomous cloud recovery proof, CI validation, and CloudWatch monitoring.
+
+---
+
 # 36. Local Environment
 
 Development environment:
@@ -1426,7 +1491,6 @@ Expanded Neo4j blast-radius analysis
 Additional AI providers
 Streaming incident detection
 Recovery SLO dashboards
-Chaos testing
 Kubernetes deployment
 GCP / additional cloud execution adapters
 ```
@@ -1457,6 +1521,29 @@ Replay protection
 Auditability
 Failure injection
 Production hardening
+
+Autonomous incident operations
+
+Durable retry / backoff / requeue
+
+FastAPI control-plane design
+
+AWS managed recovery execution
+
+Amazon ECS / Fargate deployment
+
+Amazon RDS persistence
+
+Terraform infrastructure as code
+
+Remote Terraform state and IAM bootstrap separation
+
+Terraform CI validation
+
+CloudWatch logging and recovery metrics
+
+Real autonomous cloud recovery
+
 ```
 
 ---
@@ -1508,9 +1595,41 @@ CLOUD RUNTIME PROVENANCE            COMPLETE
 REAL CLOUD ORCHESTRATED RECOVERY    COMPLETE
 
 OPT-IN AWS INTEGRATION TEST         COMPLETE
+
+AWS INFRASTRUCTURE AS CODE          COMPLETE
+
+REMOTE TERRAFORM STATE              COMPLETE
+
+IAM BOOTSTRAP SEPARATION            COMPLETE
+
+ECS / FARGATE DEPLOYMENT            COMPLETE
+
+APPLICATION LOAD BALANCER           COMPLETE
+
+AMAZON RDS POSTGRESQL               COMPLETE
+
+AMAZON ECR                          COMPLETE
+
+AWS SECRETS MANAGER                 COMPLETE
+
+AUTONOMOUS CLOUD WORKER             COMPLETE
+
+CLOUD FASTAPI CONTROL PLANE         COMPLETE
+
+TERRAFORM CI VALIDATION             COMPLETE
+
+CLOUDWATCH LOG INTEGRATION          COMPLETE
+
+CLOUDWATCH RECOVERY METRICS         COMPLETE
+
+REAL AUTONOMOUS CLOUD E2E           COMPLETE
+
+FINAL ARCHITECTURE / DOCUMENTATION  IN PROGRESS
+
+PORTFOLIO / DEMO PACKAGING          PENDING
 ```
 
-**CURRENT PLATFORM STATUS — PHASE 5B COMPLETE**
+**CURRENT PLATFORM STATUS — PHASE 5F COMPLETE / PHASE 5G IN PROGRESS**
 
 ---
 
@@ -1812,3 +1931,112 @@ infrastructure/terraform/
 ```
 
 **PHASE 5C — AWS INFRASTRUCTURE AS CODE IMPLEMENTED**
+
+## Phase 5D — Cloud Control Plane Deployment
+
+Phase 5D deploys the Phase 4 control plane and autonomous worker into AWS without changing the existing recovery authority model.
+
+The deployed environment includes:
+
+```text
+Application Load Balancer
+↓
+ECS / Fargate FastAPI control plane
+↓
+Amazon RDS PostgreSQL 16
+↑
+ECS / Fargate autonomous recovery worker
+```
+
+Container images are stored in Amazon ECR. Application secrets are supplied through AWS Secrets Manager.
+
+The cloud worker continues to use the durable Phase 4 recovery queue and the hardened Phase 3 recovery orchestrator.
+
+### Real Autonomous AWS End-to-End Proof
+
+```text
+Incident ID:                 1
+Incident Type:               SCHEMA_DRIFT
+Recovery Attempt:            4
+Recovery Action:             RESTORE_SCHEMA_DRIFT_BACKUP
+Automatic Execution:         true
+Execution Backend:           emr-serverless
+Storage Backend:             aws-s3
+Recovery Status:             COMPLETED
+Post-Validation Healthy:     true
+Recovery Needed:             false
+Final Schema Columns:        15
+Remaining Detections:        none
+Final Incident Status:       RESOLVED
+```
+
+Recovery EMR job: `00gadjh5i3f6u00b`
+
+Post-validation schema-capture EMR job: `00gadjimkab5d80b`
+
+Final recovery queue state: `COMPLETED`.
+
+**PHASE 5D — CLOUD CONTROL PLANE DEPLOYMENT COMPLETE**
+
+## Phase 5E — Terraform CI/CD Checks
+
+Phase 5E adds Terraform static validation to the existing GitHub Actions workflow.
+
+Both Terraform stacks are checked using:
+
+```text
+terraform fmt -check
+terraform init -backend=false -lockfile=readonly
+terraform validate
+```
+
+The CI workflow intentionally does not perform `terraform plan`, `terraform apply`, or AWS deployment.
+
+**PHASE 5E — TERRAFORM CI/CD CHECKS COMPLETE**
+
+## Phase 5F — AWS Observability Hardening
+
+Phase 5F adds AWS-native recovery visibility around the deployed ECS worker.
+
+CloudWatch log groups:
+
+```text
+/ecs/ai-data-pipeline-incident-recovery-dev/api
+/ecs/ai-data-pipeline-incident-recovery-dev/worker
+/ecs/ai-data-pipeline-incident-recovery-dev/migration
+```
+
+Log retention: `14 days`.
+
+CloudWatch metric namespace: `IncidentRecovery/dev`.
+
+Configured recovery metrics:
+
+```text
+RecoveryResolvedCount
+RCAFailedCount
+PolicyFailedCount
+ExecutionFailedCount
+ValidationErrorCount
+ValidationFailedCount
+WorkerErrorCount
+ClaimLostCount
+```
+
+The metric filters were deployed through Terraform and verified live in AWS.
+
+**PHASE 5F — AWS OBSERVABILITY HARDENING COMPLETE**
+
+## Phase 5G — Final Architecture / Documentation
+
+Detailed Phase 5 documentation:
+
+```text
+docs/phase_5_cloud_deployment.md
+```
+
+**PHASE 5G — IN PROGRESS**
+
+## Phase 5H — Portfolio / Demo Packaging
+
+**PHASE 5H — PENDING**
