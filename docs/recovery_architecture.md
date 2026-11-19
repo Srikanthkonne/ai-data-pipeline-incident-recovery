@@ -1,6 +1,6 @@
 # Automated Recovery Architecture
 
-**Project:** AI-Powered Data Pipeline Incident Detection & Recovery Platform
+**Project:** Lineage-Aware Autonomous Data Pipeline Incident Detection & Recovery Platform
 **Component:** Phase 3 Recovery Architecture
 **Status:** COMPLETE
 **Frozen:** November 14, 2026

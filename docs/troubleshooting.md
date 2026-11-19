@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**Project:** AI-Powered Data Pipeline Incident Detection & Recovery Platform
+**Project:** Lineage-Aware Autonomous Data Pipeline Incident Detection & Recovery Platform
 **Scope:** Phase 1–3 implementation and Phase 3 production hardening
 **Status:** COMPLETE
 **Frozen:** November 14, 2026
@@ -28,7 +28,7 @@ The guide focuses on real issues observed during development rather than hypothe
 Expected project root:
 
 ```text
-/Users/srikanthkonne/Desktop/Projects/ai-data-pipeline-incident-recovery
+/Users/srikanthkonne/Projects/lineage-aware-autonomous-data-recovery
 ```
 
 Confirm:
@@ -40,7 +40,7 @@ pwd
 Expected:
 
 ```text
-/Users/srikanthkonne/Desktop/Projects/ai-data-pipeline-incident-recovery
+/Users/srikanthkonne/Projects/lineage-aware-autonomous-data-recovery
 ```
 
 ---

@@ -1,6 +1,6 @@
 # Production Hardening
 
-**Project:** AI-Powered Data Pipeline Incident Detection & Recovery Platform
+**Project:** Lineage-Aware Autonomous Data Pipeline Incident Detection & Recovery Platform
 **Phase:** 3F — Production Hardening
 **Status:** COMPLETE
 **Frozen:** November 14, 2026

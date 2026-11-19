@@ -1,6 +1,6 @@
 # Failure Injection Testing
 
-**Project:** AI-Powered Data Pipeline Incident Detection & Recovery Platform
+**Project:** Lineage-Aware Autonomous Data Pipeline Incident Detection & Recovery Platform
 **Phase:** Phase 3 — Incident Detection, RCA, Recovery, and Production Hardening
 **Status:** COMPLETE
 **Frozen:** November 14, 2026

@@ -1,6 +1,6 @@
 # Phase 3 — Incident Detection, RCA & Automated Recovery
 
-**Project:** AI-Powered Data Pipeline Incident Detection & Recovery Platform
+**Project:** Lineage-Aware Autonomous Data Pipeline Incident Detection & Recovery Platform
 **Phase Status:** COMPLETE
 **Frozen:** November 14, 2026
 

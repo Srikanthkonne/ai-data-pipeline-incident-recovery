@@ -1,6 +1,6 @@
 # Phase 5 — AWS Cloud Production Deployment
 
-**Project:** AI-Powered Data Pipeline Incident Detection & Recovery Platform
+**Project:** Lineage-Aware Autonomous Data Pipeline Incident Detection & Recovery Platform
 
 **Phase:** 5 — AWS / Cloud Production Deployment
 
@@ -70,8 +70,7 @@ Phase 5C — AWS Infrastructure as Code           COMPLETE
 Phase 5D — Cloud Control Plane Deployment       COMPLETE
 Phase 5E — Terraform CI/CD Checks               COMPLETE
 Phase 5F — AWS Observability Hardening          COMPLETE
-Phase 5G — Final Architecture / Documentation   IN PROGRESS
-Phase 5H — Portfolio / Demo Packaging           PENDING
+Phase 5G — Final Architecture / Documentation   COMPLETE
 ```
 
 ---
@@ -539,8 +538,7 @@ Phase 5C — AWS Infrastructure as Code            COMPLETE
 Phase 5D — Cloud Control Plane Deployment        COMPLETE
 Phase 5E — Terraform CI/CD Checks                COMPLETE
 Phase 5F — AWS Observability Hardening           COMPLETE
-Phase 5G — Final Architecture / Documentation    IN PROGRESS
-Phase 5H — Portfolio / Demo Packaging            PENDING
+Phase 5G — Final Architecture / Documentation    COMPLETE
 ```
 
 ---
