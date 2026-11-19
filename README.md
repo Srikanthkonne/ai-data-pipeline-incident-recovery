@@ -1,6 +1,6 @@
-# AI-Powered Data Pipeline Incident Detection & Recovery Platform
+# Lineage-Aware Autonomous Data Pipeline Incident Detection & Recovery Platform
 
-A production-style data engineering platform that detects pipeline failures, creates incidents, performs lineage-aware root-cause analysis, and safely executes automated recovery using deterministic guardrails around AI-assisted investigation.
+An AI-assisted, production-style data reliability platform that detects pipeline failures, performs lineage- and provenance-aware root-cause analysis, and safely executes autonomous recovery using deterministic guardrails.
 
 The system demonstrates a full path from data ingestion to autonomous incident response:
 
